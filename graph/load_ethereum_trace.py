@@ -17,7 +17,7 @@ from ingestion.ethereum_adapter import trace_ethereum
 from graph.neo4j_client import Neo4jClient
 
 # --- config - adjust as needed ---
-SEED_ADDRESS = "0x27fD43BABfbe83a81d14665b1a6fB8030A60C9b4"  # WazirX compromised wallet
+SEED_ADDRESS = "0xd5ED34b52AC4ab84d8FA8A231a3218bbF01Ed510"  # Funnull OFAC-sanctioned (Huione-linked)
 START_TIME = datetime(2024, 7, 18)
 END_TIME = datetime(2024, 8, 18)
 MAX_HOPS = 3
