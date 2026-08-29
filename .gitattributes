@@ -1,0 +1,3 @@
+data/labels/bitcoin/elliptic_txs_features.csv filter=lfs diff=lfs merge=lfs -text
+data/labels/elliptic-data-set.zip filter=lfs diff=lfs merge=lfs -text
+data/labels/tron/sdn_advanced.xml filter=lfs diff=lfs merge=lfs -text
