@@ -1,0 +1,241 @@
+{
+  "seed_address": "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+  "nodes": [
+    {
+      "chain": "ethereum",
+      "address": "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+      "is_labeled": false,
+      "label": null,
+      "category": null,
+      "label_source": null,
+      "attribution_tier": null,
+      "cluster_id": 101,
+      "risk_score": 0.1,
+      "risk_score_raw": 0.12,
+      "shap_factors": null
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e",
+      "is_labeled": true,
+      "label": "Tornado Cash Router",
+      "category": "mixer",
+      "label_source": "public",
+      "attribution_tier": "tier_1",
+      "cluster_id": 202,
+      "risk_score": 0.95,
+      "risk_score_raw": 0.98,
+      "shap_factors": [
+        { "feature": "is_mixer", "value": 1.0, "impact": 0.5 },
+        { "feature": "tx_frequency", "value": 1500, "impact": 0.3 }
+      ]
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x11223344556677889900aabbccddeeff00112233",
+      "is_labeled": false,
+      "label": null,
+      "category": null,
+      "label_source": null,
+      "attribution_tier": null,
+      "cluster_id": null,
+      "risk_score": 0.4,
+      "risk_score_raw": 0.45,
+      "shap_factors": null
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x3344556677889900aabbccddeeff001122334455",
+      "is_labeled": true,
+      "label": "Binance 14",
+      "category": "exchange",
+      "label_source": "internal",
+      "attribution_tier": "tier_1",
+      "cluster_id": 303,
+      "risk_score": 0.05,
+      "risk_score_raw": 0.04,
+      "shap_factors": null
+    },
+    {
+      "chain": "tron",
+      "address": "TF17BgPaPeWfYm2A6g1R4A8Gxq2G9A6A1x",
+      "is_labeled": false,
+      "label": null,
+      "category": "unknown",
+      "label_source": null,
+      "attribution_tier": null,
+      "cluster_id": null,
+      "risk_score": 0.7,
+      "risk_score_raw": 0.72,
+      "shap_factors": null
+    },
+    {
+      "chain": "tron",
+      "address": "TJ42AgPaPeWfYm2A6g1R4A8Gxq2G9A6A2y",
+      "is_labeled": true,
+      "label": "Huobi",
+      "category": "exchange",
+      "label_source": "public",
+      "attribution_tier": "tier_1",
+      "cluster_id": 404,
+      "risk_score": 0.1,
+      "risk_score_raw": 0.11,
+      "shap_factors": null
+    },
+    {
+      "chain": "tron",
+      "address": "TG88CgPaPeWfYm2A6g1R4A8Gxq2G9A6A3z",
+      "is_labeled": true,
+      "label": "OFAC_SANCTIONED_ENTITY",
+      "category": "illicit",
+      "label_source": "gov",
+      "attribution_tier": "tier_1",
+      "cluster_id": 505,
+      "risk_score": 1.0,
+      "risk_score_raw": 1.0,
+      "shap_factors": null
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x556677889900aabbccddeeff0011223344556677",
+      "is_labeled": false,
+      "label": null,
+      "category": null,
+      "label_source": null,
+      "attribution_tier": null,
+      "cluster_id": null,
+      "risk_score": 0.85,
+      "risk_score_raw": 0.87,
+      "shap_factors": [
+        { "feature": "distance_to_sanctioned", "value": 1, "impact": 0.6 }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "chain": "ethereum",
+      "tx_hash": "0xabc123...",
+      "from_address": "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+      "to_address": "0x11223344556677889900aabbccddeeff00112233",
+      "asset": "ETH",
+      "amount": 10.5,
+      "amount_usd": 31500,
+      "timestamp": "2023-10-01T10:00:00Z",
+      "block_number": 18000000,
+      "is_inferred_bridge_edge": false
+    },
+    {
+      "chain": "ethereum",
+      "tx_hash": "0xdef456...",
+      "from_address": "0x11223344556677889900aabbccddeeff00112233",
+      "to_address": "0x9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e",
+      "asset": "ETH",
+      "amount": 10.0,
+      "amount_usd": 30000,
+      "timestamp": "2023-10-01T10:15:00Z",
+      "block_number": 18000050,
+      "is_inferred_bridge_edge": false
+    },
+    {
+      "chain": "ethereum",
+      "tx_hash": "0xghi789...",
+      "from_address": "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+      "to_address": "0x3344556677889900aabbccddeeff001122334455",
+      "asset": "USDT",
+      "amount": 50000,
+      "amount_usd": 50000,
+      "timestamp": "2023-10-02T12:00:00Z",
+      "block_number": 18007000,
+      "is_inferred_bridge_edge": false
+    },
+    {
+      "chain": "ethereum",
+      "tx_hash": "cross_chain_bridge_1",
+      "from_address": "0x9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e",
+      "to_address": "TF17BgPaPeWfYm2A6g1R4A8Gxq2G9A6A1x",
+      "asset": "USDT",
+      "amount": 29000,
+      "amount_usd": 29000,
+      "timestamp": "2023-10-02T14:00:00Z",
+      "block_number": 0,
+      "is_inferred_bridge_edge": true
+    },
+    {
+      "chain": "tron",
+      "tx_hash": "a1b2c3d4...",
+      "from_address": "TF17BgPaPeWfYm2A6g1R4A8Gxq2G9A6A1x",
+      "to_address": "TJ42AgPaPeWfYm2A6g1R4A8Gxq2G9A6A2y",
+      "asset": "USDT",
+      "amount": 10000,
+      "amount_usd": 10000,
+      "timestamp": "2023-10-03T09:00:00Z",
+      "block_number": 55000000,
+      "is_inferred_bridge_edge": false
+    },
+    {
+      "chain": "tron",
+      "tx_hash": "e5f6g7h8...",
+      "from_address": "TF17BgPaPeWfYm2A6g1R4A8Gxq2G9A6A1x",
+      "to_address": "TG88CgPaPeWfYm2A6g1R4A8Gxq2G9A6A3z",
+      "asset": "USDT",
+      "amount": 19000,
+      "amount_usd": 19000,
+      "timestamp": "2023-10-03T10:00:00Z",
+      "block_number": 55000200,
+      "is_inferred_bridge_edge": false
+    },
+    {
+      "chain": "tron",
+      "tx_hash": "cross_chain_bridge_2",
+      "from_address": "TG88CgPaPeWfYm2A6g1R4A8Gxq2G9A6A3z",
+      "to_address": "0x556677889900aabbccddeeff0011223344556677",
+      "asset": "USDC",
+      "amount": 18000,
+      "amount_usd": 18000,
+      "timestamp": "2023-10-04T11:00:00Z",
+      "block_number": 0,
+      "is_inferred_bridge_edge": true
+    },
+    {
+      "chain": "ethereum",
+      "tx_hash": "0xjkl012...",
+      "from_address": "0x556677889900aabbccddeeff0011223344556677",
+      "to_address": "0x11223344556677889900aabbccddeeff00112233",
+      "asset": "USDC",
+      "amount": 18000,
+      "amount_usd": 18000,
+      "timestamp": "2023-10-04T12:00:00Z",
+      "block_number": 18020000,
+      "is_inferred_bridge_edge": false
+    },
+    {
+      "chain": "ethereum",
+      "tx_hash": "0xmno345...",
+      "from_address": "0x11223344556677889900aabbccddeeff00112233",
+      "to_address": "0x3344556677889900aabbccddeeff001122334455",
+      "asset": "USDC",
+      "amount": 18000,
+      "amount_usd": 18000,
+      "timestamp": "2023-10-05T08:00:00Z",
+      "block_number": 18025000,
+      "is_inferred_bridge_edge": false
+    }
+  ],
+  "summary": {
+    "total_nodes": 8,
+    "total_edges": 9,
+    "known_vasp_matches": 2,
+    "highest_risk_path": [
+      "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+      "0x11223344556677889900aabbccddeeff00112233",
+      "0x9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e",
+      "TF17BgPaPeWfYm2A6g1R4A8Gxq2G9A6A1x",
+      "TG88CgPaPeWfYm2A6g1R4A8Gxq2G9A6A3z"
+    ],
+    "top_destination": {
+      "address": "0x3344556677889900aabbccddeeff001122334455",
+      "label": "Binance 14",
+      "confidence": 0.88
+    }
+  }
+}

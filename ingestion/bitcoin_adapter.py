@@ -18,9 +18,16 @@ simplification for graph visualization/tracing purposes - it does NOT
 imply input address X specifically sent value to output address Y (in
 UTXO transactions, inputs are pooled together, not individually routed
 to specific outputs). The RAW inputs/outputs structure is preserved
-separately (see get_raw_transactions) for clustering/bitcoin_cluster.py,
+separately (see raw_transactions) for clustering/bitcoin_cluster.py,
 which needs the true input-grouping for the Common-Input-Ownership
 Heuristic - do not use the pairwise edges for that, use the raw structure.
+
+FIX (this version): the transaction-matching filter previously only
+checked the FIRST address in each input/output's `addresses` array
+(`addresses[SAFE_OFFSET(0)]`), which silently missed multi-signature
+transactions where the seed address appears 2nd, 3rd, etc. in that
+array. Now uses `@address IN UNNEST(...)` to check full membership,
+so multi-sig activity involving the seed address is no longer dropped.
 
 Usage:
     from datetime import datetime
@@ -59,6 +66,10 @@ def _fetch_transactions_for_address(
     Pulls raw transactions where `address` appears in inputs OR outputs.
     Returns the full inputs/outputs arrays per transaction - needed both
     for pairwise edge construction AND for CIOH clustering later.
+
+    FIXED: checks full membership across each input/output's `addresses`
+    array (not just index 0), so multi-sig transactions involving the
+    seed address as a non-first signer are no longer silently missed.
     """
     query = """
         SELECT
@@ -70,9 +81,15 @@ def _fetch_transactions_for_address(
         FROM `bigquery-public-data.crypto_bitcoin.transactions`
         WHERE block_timestamp BETWEEN @start_time AND @end_time
           AND (
-            EXISTS(SELECT 1 FROM UNNEST(inputs) AS i WHERE i.addresses[SAFE_OFFSET(0)] = @address)
+            EXISTS(
+              SELECT 1 FROM UNNEST(inputs) AS i
+              WHERE @address IN UNNEST(i.addresses)
+            )
             OR
-            EXISTS(SELECT 1 FROM UNNEST(outputs) AS o WHERE o.addresses[SAFE_OFFSET(0)] = @address)
+            EXISTS(
+              SELECT 1 FROM UNNEST(outputs) AS o
+              WHERE @address IN UNNEST(o.addresses)
+            )
           )
         ORDER BY block_timestamp DESC
         LIMIT @limit
@@ -119,6 +136,12 @@ def trace_bitcoin(
     raw_transactions) - raw_transactions preserves true input/output
     groupings per tx, required by clustering/bitcoin_cluster.py's CIOH
     implementation (pairwise edges alone lose this grouping information).
+
+    NOTE: Bitcoin addresses are case-sensitive (legacy base58 P2PKH
+    encodes meaning in case; bech32 is technically case-insensitive but
+    convention keeps it lowercase) - unlike the Ethereum adapter, this
+    function deliberately does NOT lowercase the seed address or any
+    address it encounters. Pass addresses exactly as given.
     """
     client = _bigquery_client(project_id)
 
@@ -229,10 +252,8 @@ def trace_bitcoin(
 
 
 if __name__ == "__main__":
-    # Manual smoke test - swap in a real seed address from your Bitcoin
-    # case study before treating this as a real result.
     nodes, edges, raw_txs = trace_bitcoin(
-        seed_address="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",  # Genesis-linked test address
+        seed_address="bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
         start_time=datetime(2024, 1, 1),
         end_time=datetime(2024, 3, 31),
         max_hops=1,

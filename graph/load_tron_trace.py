@@ -4,22 +4,35 @@ graph/load_tron_trace.py
 Mirrors graph/load_ethereum_trace.py - ties tron_adapter.py together with
 neo4j_client.py: runs a real Tron trace and loads it into Neo4j.
 
+CREDENTIALS: loaded from a .env file at the project root via python-dotenv.
+No hardcoded keys or fallback placeholder strings.
+
 Usage:
     python -m graph.load_tron_trace
 """
 
+import os
 from datetime import datetime
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from ingestion.tron_adapter import trace_tron
 from graph.neo4j_client import Neo4jClient
 
 # --- config - adjust as needed ---
-SEED_ADDRESS = "TNmRfnSUXZoWWzxcDDbf95eGQYXt1mJDt8"  # Funnull OFAC-sanctioned (Huione-linked)
+SEED_ADDRESS = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"  # swap for your actual Tron eval trace seed
 START_TIME = datetime(2024, 6, 1)
 END_TIME = datetime(2024, 8, 31)
 MAX_HOPS = 2  # keep smaller than Ethereum's - TronGrid rate limits are tighter
 
-TRONGRID_API_KEY = "4b9ed78d-8bdc-4e48-b701-7d2c035d843a"  # your real TronGrid key
+TRONGRID_API_KEY = os.environ.get("TRONGRID_API_KEY")
+if not TRONGRID_API_KEY:
+    raise RuntimeError(
+        "TRONGRID_API_KEY not found. Copy .env.example to .env in the "
+        "project root and fill in your real TronGrid key, then re-run."
+    )
 
 NEO4J_URI = "bolt://localhost:7687"
 NEO4J_USER = "neo4j"
@@ -46,7 +59,7 @@ def main():
         print("[load_tron_trace] could not connect to Neo4j - is the container running?")
         return
 
-    client.setup_schema()  # safe to re-run
+    client.setup_schema()
 
     print("[load_tron_trace] loading nodes...")
     client.load_nodes(nodes)
