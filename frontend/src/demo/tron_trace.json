@@ -1,0 +1,20 @@
+{
+  "seed_address": "TQmDemoSeed7kYxP2Qn1R8v3Lm6Aa9BcDeF",
+  "data_source": "bundled_offline_fixture",
+  "scoring_status": "offline_demo",
+  "model_version": "tron-demo-v1",
+  "nodes": [
+    {"chain":"tron","address":"TQmDemoSeed7kYxP2Qn1R8v3Lm6Aa9BcDeF","is_labeled":false,"label":null,"category":"unknown","label_source":null,"source_type":null,"label_confidence":null,"attribution_tier":"unattributed","cluster_id":null,"risk_score":0.12,"risk_score_raw":0.15,"shap_factors":[{"feature":"counterparty_concentration","value":0.2,"impact":-0.08}]},
+    {"chain":"tron","address":"TQmDemoHop8kYxP2Qn1R8v3Lm6Aa9BcDeFG","is_labeled":false,"label":null,"category":"unknown","label_source":null,"source_type":null,"label_confidence":null,"attribution_tier":"low_confidence","cluster_id":"tron-cluster-1","risk_score":0.61,"risk_score_raw":0.64,"shap_factors":[{"feature":"rapid_forwarding","value":1,"impact":0.24}]},
+    {"chain":"tron","address":"TXDemoExchange9kYxP2Qn1R8v3Lm6Aa9BcDeF","is_labeled":true,"label":"Binance Hot Wallet Demo","category":"exchange","label_source":"offline_fixture","source_type":"verified_exchange","label_confidence":0.9,"attribution_tier":"high_confidence","cluster_id":"tron-cluster-2","risk_score":0.18,"risk_score_raw":0.2,"shap_factors":[]},
+    {"chain":"tron","address":"TNDemoSanctioned7kYxP2Qn1R8v3Lm6Aa9BcDeF","is_labeled":true,"label":"Sanctioned Entity Demo","category":"sanctioned","label_source":"offline_fixture","source_type":"sanctions_list","label_confidence":1,"attribution_tier":"known_sanctioned","cluster_id":null,"risk_score":0.96,"risk_score_raw":0.98,"shap_factors":[{"feature":"sanctions_match","value":1,"impact":0.8}]}
+  ],
+  "edges": [
+    {"chain":"tron","tx_hash":"tron-demo-001","from_address":"TQmDemoSeed7kYxP2Qn1R8v3Lm6Aa9BcDeF","to_address":"TQmDemoHop8kYxP2Qn1R8v3Lm6Aa9BcDeFG","asset":"USDT","amount":12000,"amount_usd":12000,"timestamp":"2024-04-10T09:00:00Z","block_number":65000000,"is_inferred_bridge_edge":false,"evidence_type":"direct_observed","edge_confidence":1},
+    {"chain":"tron","tx_hash":"tron-demo-002","from_address":"TQmDemoHop8kYxP2Qn1R8v3Lm6Aa9BcDeFG","to_address":"TXDemoExchange9kYxP2Qn1R8v3Lm6Aa9BcDeF","asset":"USDT","amount":7000,"amount_usd":7000,"timestamp":"2024-04-10T10:12:00Z","block_number":65000120,"is_inferred_bridge_edge":false,"evidence_type":"direct_observed","edge_confidence":1},
+    {"chain":"tron","tx_hash":"tron-demo-003","from_address":"TQmDemoHop8kYxP2Qn1R8v3Lm6Aa9BcDeFG","to_address":"TNDemoSanctioned7kYxP2Qn1R8v3Lm6Aa9BcDeF","asset":"USDT","amount":5000,"amount_usd":5000,"timestamp":"2024-04-10T10:18:00Z","block_number":65000140,"is_inferred_bridge_edge":false,"evidence_type":"direct_observed","edge_confidence":1}
+  ],
+  "summary": {"total_nodes":4,"total_edges":3,"known_vasp_matches":2,"insufficient_evidence":false,"highest_risk_path":["TQmDemoSeed7kYxP2Qn1R8v3Lm6Aa9BcDeF","TQmDemoHop8kYxP2Qn1R8v3Lm6Aa9BcDeFG","TNDemoSanctioned7kYxP2Qn1R8v3Lm6Aa9BcDeF"],"top_destination":{"address":"TNDemoSanctioned7kYxP2Qn1R8v3Lm6Aa9BcDeF","label":"Sanctioned Entity Demo","confidence":1,"tier":"known_sanctioned"}},
+  "candidates": [],
+  "timeline": []
+}

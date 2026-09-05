@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pandas
+numpy
+scikit-learn
+xgboost
+shap
+joblib
+python-dotenv
+networkx
+google-cloud-bigquery
+neo4j
+pyyaml
+pytest

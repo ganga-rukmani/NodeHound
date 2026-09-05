@@ -1,0 +1,20 @@
+{
+  "seed_address": "bc1qdemo7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e",
+  "data_source": "bundled_offline_fixture",
+  "scoring_status": "offline_demo",
+  "model_version": "bitcoin-demo-v1",
+  "nodes": [
+    {"chain":"bitcoin","address":"bc1qdemo7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","is_labeled":false,"label":null,"category":"unknown","label_source":null,"source_type":null,"label_confidence":null,"attribution_tier":"unattributed","cluster_id":null,"risk_score":0.1,"risk_score_raw":0.13,"shap_factors":[]},
+    {"chain":"bitcoin","address":"bc1qintermediate7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","is_labeled":false,"label":null,"category":"unknown","label_source":null,"source_type":null,"label_confidence":null,"attribution_tier":"medium_confidence","cluster_id":"btc-cluster-1","risk_score":0.72,"risk_score_raw":0.75,"shap_factors":[{"feature":"utxo_inferred_edges","value":2,"impact":0.2}]},
+    {"chain":"bitcoin","address":"bc1qexchange7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","is_labeled":true,"label":"Exchange Wallet Demo","category":"exchange","label_source":"offline_fixture","source_type":"verified_exchange","label_confidence":0.9,"attribution_tier":"high_confidence","cluster_id":"btc-cluster-2","risk_score":0.22,"risk_score_raw":0.25,"shap_factors":[]},
+    {"chain":"bitcoin","address":"3DemoMixer7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","is_labeled":true,"label":"Mixer Cluster Demo","category":"mixer","label_source":"offline_fixture","source_type":"community_tag","label_confidence":0.7,"attribution_tier":"medium_confidence","cluster_id":"btc-cluster-3","risk_score":0.88,"risk_score_raw":0.9,"shap_factors":[{"feature":"mixer_proximity","value":1,"impact":0.6}]}
+  ],
+  "edges": [
+    {"chain":"bitcoin","tx_hash":"btc-demo-001","from_address":"bc1qdemo7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","to_address":"bc1qintermediate7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","asset":"BTC","amount":0.8,"amount_usd":52000,"timestamp":"2024-05-02T08:00:00Z","block_number":840000,"is_inferred_bridge_edge":false,"evidence_type":"utxo_allocation_inferred","edge_confidence":0.55},
+    {"chain":"bitcoin","tx_hash":"btc-demo-002","from_address":"bc1qintermediate7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","to_address":"bc1qexchange7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","asset":"BTC","amount":0.45,"amount_usd":29250,"timestamp":"2024-05-02T09:20:00Z","block_number":840010,"is_inferred_bridge_edge":false,"evidence_type":"utxo_allocation_inferred","edge_confidence":0.55},
+    {"chain":"bitcoin","tx_hash":"btc-demo-003","from_address":"bc1qintermediate7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","to_address":"3DemoMixer7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","asset":"BTC","amount":0.35,"amount_usd":22750,"timestamp":"2024-05-02T09:24:00Z","block_number":840011,"is_inferred_bridge_edge":false,"evidence_type":"utxo_allocation_inferred","edge_confidence":0.55}
+  ],
+  "summary": {"total_nodes":4,"total_edges":3,"known_vasp_matches":2,"insufficient_evidence":false,"highest_risk_path":["bc1qdemo7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","bc1qintermediate7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","3DemoMixer7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e"],"top_destination":{"address":"3DemoMixer7k2y5n8p4w6r3m9x0c1v2b4n6z8q5s7d9e","label":"Mixer Cluster Demo","confidence":0.82,"tier":"medium_confidence"}},
+  "candidates": [],
+  "timeline": []
+}
