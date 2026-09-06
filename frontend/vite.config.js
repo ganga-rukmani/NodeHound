@@ -9,6 +9,7 @@ export default defineConfig({
       '/health': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/trace': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/node/': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/timeline/': { target: 'http://127.0.0.1:8080', changeOrigin: true },
     },
   },
 })

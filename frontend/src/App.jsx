@@ -1,64 +1,171 @@
-import { useState } from 'react';
-import Landing from './components/Landing';
-import Loading from './components/Loading';
-import Results from './components/Results';
-import Dashboard from './components/Dashboard';
+import React, { useState } from 'react';
 import { api } from './api.js';
-import { addCase } from './caseHistory';
-import demoTraceData from './demo/sample_trace.json';
+import { InvestigationProvider, useInvestigation } from './context/InvestigationContext';
+import Loading from './components/Loading';
+import Dashboard from './components/Dashboard';
+import InvestigatorHeader from './components/layout/InvestigatorHeader';
+import InvestigatorSidebar from './components/layout/InvestigatorSidebar';
+import TxDetailDrawer from './components/common/TxDetailDrawer';
+
+// 18 Page Views + Graph
+import NewInvestigation from './components/pages/NewInvestigation';
+import InvestigationOverview from './components/pages/InvestigationOverview';
+import TransactionInvestigation from './components/pages/TransactionInvestigation';
+import AddressIntelligence from './components/pages/AddressIntelligence';
+import BehavioralAnalysis from './components/pages/BehavioralAnalysis';
+import FundFlowAnalysis from './components/pages/FundFlowAnalysis';
+import SuspiciousAttribution from './components/pages/SuspiciousAttribution';
+import VaspIntelligence from './components/pages/VaspIntelligence';
+import TypologyAnalysis from './components/pages/TypologyAnalysis';
+import MixerCrossChain from './components/pages/MixerCrossChain';
+import AiRiskAnalysis from './components/pages/AiRiskAnalysis';
+import ShapExplainability from './components/pages/ShapExplainability';
+import AlertsView from './components/pages/AlertsView';
+import RecommendationsView from './components/pages/RecommendationsView';
+import EvidenceExplorer from './components/pages/EvidenceExplorer';
+import EvidenceIntegrity from './components/pages/EvidenceIntegrity';
+import InvestigationReportView from './components/pages/InvestigationReportView';
+import TechnicalModelDetails from './components/pages/TechnicalModelDetails';
+import GraphVisualizer from './components/pages/GraphVisualizer';
+
+// Demo Fixtures
+import demoEthTrace from './demo/sample_trace.json';
 import demoTronTrace from './demo/tron_trace.json';
-import demoBitcoinTrace from './demo/bitcoin_trace.json';
+import demoBtcTrace from './demo/bitcoin_trace.json';
 
 const DEMO_FIXTURES = {
-  ethereum: demoTraceData,
+  ethereum: demoEthTrace,
   tron: demoTronTrace,
-  bitcoin: demoBitcoinTrace,
+  bitcoin: demoBtcTrace,
 };
 
-function normalizeDemo(data, chain) {
+function normalizeDemo(data, chain = 'ethereum') {
   const fixture = JSON.parse(JSON.stringify(data));
   fixture._demo = true;
+  fixture.chain = chain;
   fixture.data_source = 'bundled_offline_fixture';
-  fixture.scoring_status = fixture.scoring_status || 'offline_demo';
-  fixture.model_version = fixture.model_version || `${chain}-demo-v1`;
   fixture.timeline = fixture.timeline?.length
     ? fixture.timeline
     : [...(fixture.edges || [])].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
-  if (!fixture.candidates?.length && fixture.summary?.top_destination) {
-    const destination = fixture.summary.top_destination;
-    fixture.candidates = [{
-      ...destination,
-      chain,
-      tier: destination.tier || 'medium_confidence',
-      hop_distance: fixture.summary.highest_risk_path?.length - 1 || 0,
-      evidence: {
-        evidence_score: destination.confidence ?? 0,
-        known_label: destination.label,
-        data_source: fixture.data_source,
-      },
-      evidence_chain: fixture.timeline,
-    }];
+
+  // Ensure candidates exist
+  if (!fixture.candidates?.length) {
+    const topDest = fixture.summary?.top_destination || (fixture.nodes?.find((n) => n.is_labeled) || fixture.nodes?.[1]);
+    if (topDest) {
+      fixture.candidates = [
+        {
+          address: topDest.address,
+          label: topDest.label,
+          category: topDest.category || 'exchange',
+          chain,
+          tier: 'high_confidence',
+          hop_distance: 2,
+          total_received: 29000,
+          total_forwarded: 19000,
+          evidence: {
+            evidence_score: topDest.confidence ?? 0.88,
+            fund_continuity: 0.85,
+            repeated_path_count: 2,
+            counterparty_concentration: 0.5,
+            proximity_to_flagged: 0.6,
+            known_label: topDest.label,
+            label_source: 'Verified Offline Fixture',
+          },
+          evidence_chain: fixture.timeline.slice(0, 3),
+        },
+      ];
+    }
   }
-  fixture.summary = {
-    ...fixture.summary,
-    candidates: fixture.candidates,
-    insufficient_evidence: fixture.summary?.insufficient_evidence ?? !fixture.candidates?.length,
+
+  // Ensure detected patterns exist
+  if (!fixture.detected_patterns?.length) {
+    fixture.detected_patterns = [
+      {
+        type: 'intermediary_forwarding',
+        address: fixture.nodes?.[2]?.address || fixture.edges?.[0]?.to_address,
+        severity: 'medium',
+        confidence: 'medium_confidence',
+        evidence: {
+          incoming_edges: 2,
+          outgoing_edges: 1,
+          forwarded_received_ratio: 0.85,
+          transaction_hashes: fixture.edges?.slice(0, 3).map((e) => e.tx_hash) || [],
+        },
+        disclaimer: 'Behavior is consistent with intermediary forwarding; it does not establish illicit intent or ownership.',
+      },
+    ];
+  }
+
+  // Ensure alerts exist
+  if (!fixture.alerts?.length) {
+    fixture.alerts = [
+      {
+        type: 'high_priority_candidate',
+        severity: 'high',
+        address: fixture.candidates?.[0]?.address,
+        tier: 'high_confidence',
+        evidence: fixture.candidates?.[0]?.evidence_chain || [],
+      },
+      {
+        type: 'intermediary_forwarding',
+        severity: 'medium',
+        address: fixture.nodes?.[2]?.address,
+        evidence: fixture.detected_patterns?.[0]?.evidence,
+      },
+    ];
+  }
+
+  // Ensure recommendations exist
+  if (!fixture.recommendations?.length) {
+    fixture.recommendations = [
+      {
+        priority: 'high',
+        action: 'Preserve and review the evidence chain for the highest-ranked candidate.',
+        basis: 'ranked graph candidate with observed transfer path',
+      },
+      {
+        priority: 'medium',
+        action: 'Review intermediary and multi-hop activity with transaction-level records.',
+        basis: 'detected_patterns',
+      },
+    ];
+  }
+
+  // Ensure model information
+  fixture.model_information = fixture.model_information || {
+    chain_model_loaded: false,
+    status: 'INSUFFICIENT_VALID_TRAINING_DATA',
+    risk_score_disclaimer: 'Behavioral risk is an estimate and is not proof of attacker ownership.',
   };
+
+  // Ensure integrity hash
+  fixture.evidence_integrity_hash =
+    fixture.evidence_integrity_hash ||
+    'a8f9c4d293847b2c019d84e756a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9';
+
   return fixture;
 }
 
-function App() {
-  const [view, setView] = useState('landing'); // 'landing' | 'loading' | 'results' | 'error'
-  const [traceData, setTraceData] = useState(null);
-  const [error, setError] = useState(null);
-  const [isDemo, setIsDemo] = useState(false);
-  const [abortController, setAbortController] = useState(null);
-  const [activeChain, setActiveChain] = useState('ethereum');
+function MainWorkspace() {
+  const {
+    activeSection,
+    setActiveSection,
+    traceData,
+    setTraceResult,
+    selectedTransaction,
+    txDrawerOpen,
+    setTxDrawerOpen,
+    selectAddress,
+    clearCase,
+  } = useInvestigation();
 
-  const handleTrace = async (config) => {
-    setActiveChain(config.chain);
+  const [viewState, setViewState] = useState('app'); // 'app' | 'loading' | 'dashboard' | 'error'
+  const [error, setError] = useState(null);
+  const [abortController, setAbortController] = useState(null);
+
+  const handleStartTrace = async (config) => {
     setError(null);
-    setView('loading');
+    setViewState('loading');
 
     const controller = new AbortController();
     setAbortController(controller);
@@ -72,169 +179,187 @@ function App() {
         end_time: config.endTime || undefined,
       });
 
-            if (controller.signal.aborted) return;
+      if (controller.signal.aborted) return;
 
-      // Handle 501 bitcoin - backend returns 501 but we guard in UI too
-      setTraceData(data);
-      setIsDemo(!!data._demo || !!data._fallback);
-      setView('results');
-
-      // Log to case history for the analytics dashboard - demo traces
-      // are intentionally excluded so the dashboard reflects real
-      // investigative work only.
-      if (!data._demo && !data._fallback) {
-        addCase({
-          seed_address: data.seed_address,
-          chain: config.chain,
-          top_destination: data.summary?.top_destination,
-          known_vasp_matches: data.summary?.known_vasp_matches,
-          total_nodes: data.summary?.total_nodes,
-          total_edges: data.summary?.total_edges,
-        });
-      }
+      setTraceResult(data, {
+        chain: config.chain,
+        maxHops: config.maxHops,
+        startTime: config.startTime,
+        endTime: config.endTime,
+      });
+      setViewState('app');
     } catch (err) {
       if (controller.signal.aborted) return;
 
       if (err.status === 501) {
         setError({
           type: 'bitcoin',
-          message: 'Bitcoin tracing is not yet available. Try Ethereum or Tron, or load the Demo Trace.',
-        });
-      } else if (err.status === 429) {
-        setError({
-          type: 'quota',
-          message: 'The live Ethereum trace hit the public BigQuery quota limit. Use the Demo Trace or try a shorter time window.',
+          title: 'Bitcoin Tracing Initializing',
+          message: 'Bitcoin tracing is currently in offline mode or requires BigQuery credentials. Load the Bitcoin Demo Trace to inspect the pipeline.',
         });
       } else if (err.status === 503) {
         setError({
           type: 'network',
-          message: err.message || 'The live trace provider is temporarily unavailable. Please try again in a moment or load the Demo Trace.',
+          title: 'Blockchain Ingestion Provider Unavailable',
+          message: err.message || 'The chain ingestion provider requires API credentials (GCP_PROJECT_ID or TRONGRID_API_KEY). You can load the offline demo trace to test the full investigator platform.',
         });
-      } else if (err.message?.includes('fetch')) {
+      } else if (err.status === 500) {
+        const msg = err.message || '';
+        const isQuota = msg.toLowerCase().includes('quota') || msg.includes('403') || msg.toLowerCase().includes('bytes scanned');
+        setError({
+          type: isQuota ? 'quota_exceeded' : 'cloud_credentials',
+          title: isQuota ? 'Google Cloud BigQuery Scan Quota Exceeded' : 'Live Ingestion Error (500)',
+          message: isQuota
+            ? 'Your query exceeded the Google Cloud BigQuery free scan quota (unbounded dates scan 6+ years of Ethereum data). To fix: enter a 1-day or 2-day date range (e.g. 2024-01-01 to 2024-01-02), enable GCP billing, or click "Load Offline Demo Trace" below to explore without limits.'
+            : (msg || 'Live blockchain query encountered a backend error. Try setting a 1-day date window (e.g. 2024-01-01 to 2024-01-02) or load the offline demo trace below.'),
+        });
+      } else if (err.message?.includes('fetch') || err.status === 0) {
         setError({
           type: 'network',
-          message: 'Could not connect to the NodeHound backend. Make sure the API server is running on port 8080.',
+          title: 'Cannot Reach NodeHound Backend API',
+          message: 'Could not connect to the backend server at http://127.0.0.1:8080. Start the backend with: uvicorn api.main:app --port 8080 or use offline demo mode.',
         });
       } else {
         setError({
           type: 'general',
-          message: err.message || 'An unexpected error occurred.',
+          title: 'Trace Ingestion Failed',
+          message: err.message || 'An unexpected error occurred during graph generation.',
         });
       }
-      setView('error');
+      setViewState('error');
     } finally {
       setAbortController(null);
     }
   };
 
   const handleLoadDemo = (chain = 'ethereum') => {
-    const fixture = normalizeDemo(DEMO_FIXTURES[chain] || DEMO_FIXTURES.ethereum, chain);
-    setActiveChain(chain);
-    setIsDemo(true);
-    setTraceData(fixture);
-    setView('results');
+    const raw = DEMO_FIXTURES[chain] || DEMO_FIXTURES.ethereum;
+    const normalized = normalizeDemo(raw, chain);
+    setTraceResult(normalized, {
+      caseId: `DEMO-${chain.toUpperCase()}-001`,
+      caseTitle: `${chain.toUpperCase()} Suspicious Flow Trace (Offline Fixture)`,
+      investigatorId: 'INV-DEMO',
+      chain,
+    });
+    setViewState('app');
   };
 
-  const handleCancel = () => {
+  const handleCancelLoading = () => {
     if (abortController) abortController.abort();
     setAbortController(null);
-    handleLoadDemo(activeChain);
+    setViewState('app');
   };
 
-  const handleBack = () => {
-    setView('landing');
-    setTraceData(null);
-    setError(null);
-    setIsDemo(false);
-  };
+  // If no trace has been loaded yet, show the New Investigation form
+  const currentSection = !traceData ? 'new_investigation' : activeSection;
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden text-gray-200">
-      <header className="px-6 py-4 border-b border-panel-border bg-panel flex justify-between items-center z-10 shrink-0">
-        <h1
-          className="text-xl font-semibold tracking-wide text-gray-100 flex items-center gap-2 cursor-pointer"
-          onClick={handleBack}
-        >
-          <span className="text-accent-primary">Node</span>Hound
-        </h1>
-                <div className="flex items-center gap-3">
-          {isDemo && view === 'results' && (
-            <span className="text-xs font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-1 rounded">
-              Demo Trace
-            </span>
-          )}
-          <button
-            onClick={() => setView('dashboard')}
-            className="text-xs text-gray-400 hover:text-cyan-300 transition-colors px-3 py-1.5 rounded-md border border-panel-border hover:border-cyan-500/40"
-          >
-            Dashboard
-          </button>
-        </div>
-      </header>
+    <div className="flex flex-col h-screen overflow-hidden text-gray-200 bg-background">
+      {/* Global Top Header */}
+      <InvestigatorHeader
+        onOpenDashboard={() => setViewState('dashboard')}
+        onNewInvestigation={() => {
+          clearCase();
+          setActiveSection('new_investigation');
+        }}
+      />
 
-      <main className="flex-grow flex flex-col relative w-full overflow-hidden">
-        {view === 'landing' && (
-          <div className="p-6 max-w-7xl mx-auto w-full h-full overflow-y-auto">
-            <Landing onTrace={handleTrace} onLoadDemo={handleLoadDemo} />
+      {/* Main Workspace Layout */}
+      <div className="flex flex-grow overflow-hidden relative">
+        {viewState === 'loading' && (
+          <div className="w-full h-full flex items-center justify-center">
+            <Loading onCancel={handleCancelLoading} />
           </div>
         )}
 
-        {view === 'loading' && (
-          <Loading onCancel={handleCancel} />
+        {viewState === 'dashboard' && (
+          <div className="w-full h-full overflow-y-auto">
+            <Dashboard onBack={() => setViewState('app')} />
+          </div>
         )}
 
-        {view === 'results' && traceData && (
-          <Results
-            data={traceData}
-            isDemo={isDemo}
-            onBack={handleBack}
-            onLoadDemo={(chain) => handleLoadDemo(chain || traceData?.nodes?.[0]?.chain || 'ethereum')}
-          />
-        )}
-
-        {view === 'dashboard' && (
-          <Dashboard onBack={handleBack} />
-        )}
-
-        {view === 'error' && (
-          <div className="flex flex-col items-center justify-center h-full gap-6">
-            <div className="cyber-panel p-8 max-w-md w-full text-center">
-              {error?.type === 'bitcoin' ? (
-                <>
-                  <div className="text-4xl mb-4">₿</div>
-                  <h2 className="text-xl font-semibold text-orange-400 mb-2">Bitcoin Not Yet Available</h2>
-                </>
-              ) : error?.type === 'quota' ? (
-                <>
-                  <div className="text-4xl mb-4">⏳</div>
-                  <h2 className="text-xl font-semibold text-yellow-400 mb-2">Quota Exceeded</h2>
-                </>
-              ) : error?.type === 'network' ? (
-                <>
-                  <div className="text-4xl mb-4">🔌</div>
-                  <h2 className="text-xl font-semibold text-red-400 mb-2">Cannot Reach Backend</h2>
-                </>
-              ) : (
-                <>
-                  <div className="text-4xl mb-4">⚠️</div>
-                  <h2 className="text-xl font-semibold text-yellow-400 mb-2">Trace Failed</h2>
-                </>
-              )}
-              <p className="text-gray-400 text-sm mb-8">{error?.message}</p>
-              <div className="flex flex-col gap-3">
-                <button onClick={handleBack} className="cyber-button-primary w-full">
-                  Try Another Address
+        {viewState === 'error' && (
+          <div className="w-full h-full flex items-center justify-center p-6">
+            <div className="cyber-panel p-8 max-w-md w-full text-center space-y-4">
+              <div className="text-4xl">⚠️</div>
+              <h2 className="text-lg font-bold text-yellow-400">{error?.title}</h2>
+              <p className="text-xs text-gray-400 leading-relaxed">{error?.message}</p>
+              <div className="flex flex-col gap-2 pt-4">
+                <button
+                  onClick={() => setViewState('app')}
+                  className="cyber-button-primary w-full py-2 text-xs"
+                >
+                  Return to Investigation Setup
                 </button>
-                <button onClick={handleLoadDemo} className="cyber-button-secondary w-full border border-gray-700 rounded-md py-2">
-                  Load Demo Trace Instead
+                <button
+                  onClick={() => handleLoadDemo('ethereum')}
+                  className="cyber-button-secondary w-full py-2 text-xs"
+                >
+                  Load Offline Demo Trace
                 </button>
               </div>
             </div>
           </div>
         )}
-      </main>
+
+        {viewState === 'app' && (
+          <>
+            {/* Sidebar Navigation */}
+            <InvestigatorSidebar />
+
+            {/* Content Area */}
+            <main className="flex-grow overflow-y-auto p-6 relative">
+              <div className="max-w-7xl mx-auto w-full pb-12">
+                {currentSection === 'new_investigation' && (
+                  <NewInvestigation
+                    onStartTrace={handleStartTrace}
+                    onLoadDemo={handleLoadDemo}
+                    isLoading={false}
+                  />
+                )}
+                {currentSection === 'overview' && <InvestigationOverview />}
+                {currentSection === 'transactions' && <TransactionInvestigation />}
+                {currentSection === 'address_intelligence' && <AddressIntelligence />}
+                {currentSection === 'behavioral_analysis' && <BehavioralAnalysis />}
+                {currentSection === 'fund_flow' && <FundFlowAnalysis />}
+                {currentSection === 'graph' && <GraphVisualizer />}
+                {currentSection === 'attribution' && <SuspiciousAttribution />}
+                {currentSection === 'vasp_intelligence' && <VaspIntelligence />}
+                {currentSection === 'typology' && <TypologyAnalysis />}
+                {currentSection === 'mixer_cross_chain' && <MixerCrossChain />}
+                {currentSection === 'ai_risk' && <AiRiskAnalysis />}
+                {currentSection === 'shap_explainability' && <ShapExplainability />}
+                {currentSection === 'technical_details' && <TechnicalModelDetails />}
+                {currentSection === 'alerts' && <AlertsView />}
+                {currentSection === 'recommendations' && <RecommendationsView />}
+                {currentSection === 'evidence_explorer' && <EvidenceExplorer />}
+                {currentSection === 'evidence_integrity' && <EvidenceIntegrity />}
+                {currentSection === 'report' && <InvestigationReportView />}
+              </div>
+            </main>
+
+            {/* Slide-out Transaction Investigation Drawer */}
+            {txDrawerOpen && selectedTransaction && (
+              <TxDetailDrawer
+                transaction={selectedTransaction}
+                onClose={() => setTxDrawerOpen(false)}
+                onSelectAddress={(addr) => {
+                  setTxDrawerOpen(false);
+                  selectAddress(addr, 'address_intelligence');
+                }}
+              />
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <InvestigationProvider>
+      <MainWorkspace />
+    </InvestigationProvider>
+  );
+}

@@ -38,4 +38,7 @@ export const api = {
 
   /** GET /node/{chain}/{address} */
   getNode: (chain, address) => request(`/node/${chain}/${address}`),
+
+  /** GET /timeline/{chain}/{address} */
+  getTimeline: (chain, address) => request(`/timeline/${chain}/${address}`),
 };
