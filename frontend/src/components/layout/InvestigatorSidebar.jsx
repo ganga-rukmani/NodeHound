@@ -20,6 +20,7 @@ import {
   FileSearch,
   Lock,
   FileText,
+  FileCheck,
   Target,
   Dna,
   Clock,
@@ -78,6 +79,7 @@ export default function InvestigatorSidebar() {
     {
       title: 'Evidentiary Output',
       items: [
+        { id: 'action_packet', label: 'Action & Disclosure Packet', icon: FileCheck },
         { id: 'alerts', label: '13. Alert Stream', icon: BellRing },
         { id: 'recommendations', label: '14. Recommendations', icon: Compass },
         { id: 'evidence_explorer', label: '15. Evidence Explorer', icon: FileSearch },
@@ -95,6 +97,7 @@ export default function InvestigatorSidebar() {
     'prioritization',
     'fund_flow_dna',
     'replay',
+    'action_packet',
   ]);
 
   return (

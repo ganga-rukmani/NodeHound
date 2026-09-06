@@ -156,4 +156,53 @@ export const api = {
     }),
 
   getSupervisorConsole: () => request('/api/cases/supervisor/console'),
+
+  // ── Prompts 8 & 9: Fraud Typology & Action Packet ──────────────────────────
+  updateCaseTypology: (caseId, data) =>
+    request(`/api/cases/${caseId}/typology`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getActionPacket: (caseId) => request(`/api/cases/${caseId}/packet`),
+
+  generateActionPacket: (caseId) =>
+    request(`/api/cases/${caseId}/packet/generate`, {
+      method: 'POST',
+    }),
+
+  submitActionPacket: (caseId) =>
+    request(`/api/cases/${caseId}/packet/submit`, {
+      method: 'POST',
+    }),
+
+  reviewActionPacket: (caseId, decision, comments) =>
+    request(`/api/cases/${caseId}/packet/review`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, comments }),
+    }),
+
+  exportActionPacketJson: (caseId) => request(`/api/cases/${caseId}/packet/json`),
+
+  exportActionPacketPdf: async (caseId) => {
+    const token = localStorage.getItem('nodehound_access_token');
+    const response = await fetch(`${API_BASE_URL}/api/cases/${caseId}/packet/pdf`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (!response.ok) {
+      const errJson = await response.json().catch(() => ({}));
+      throw new Error(errJson.detail || 'Failed to download PDF action packet');
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `NodeHound-Action-Packet-${caseId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
 };

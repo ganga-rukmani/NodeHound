@@ -504,3 +504,4 @@ export default function SupervisorConsole({ onSelectCase }) {
     </div>
   );
 }
+

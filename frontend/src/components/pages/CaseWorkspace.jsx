@@ -29,6 +29,7 @@ import { api } from '../../api';
 import SuspiciousWalletPrioritization from './SuspiciousWalletPrioritization';
 import FundFlowDna from './FundFlowDna';
 import InvestigationReplay from './InvestigationReplay';
+import ActionPacketViewer from './ActionPacketViewer';
 
 export default function CaseWorkspace({ caseObj, onBack }) {
   const { user, isSupervisor, isInvestigator } = useAuth();
@@ -40,6 +41,12 @@ export default function CaseWorkspace({ caseObj, onBack }) {
   const [newNote, setNewNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState('');
+
+  // Fraud Typology state (Prompt 8)
+  const [typology, setTypology] = useState(caseObj?.fraud_typology || 'Unknown');
+  const [typologySource, setTypologySource] = useState(caseObj?.fraud_typology_source || 'INVESTIGATOR');
+  const [typologySecondary, setTypologySecondary] = useState(caseObj?.fraud_typology_secondary || '');
+  const [savingTypology, setSavingTypology] = useState(false);
 
   // Supervisor Review Modal state
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
@@ -69,19 +76,25 @@ export default function CaseWorkspace({ caseObj, onBack }) {
     hop_count: 3,
   };
 
-  // Load timeline and notes for case
+  // Load timeline, notes, and case details
   useEffect(() => {
     let isMounted = true;
     async function loadTimelineAndNotes() {
       setLoading(true);
       try {
-        const [tlRes, notesRes] = await Promise.all([
+        const [tlRes, notesRes, caseRes] = await Promise.all([
           api.getCaseTimeline(currentCase.case_id).catch(() => ({ events: [] })),
           api.getCaseNotes(currentCase.case_id).catch(() => []),
+          api.getCase(currentCase.case_id).catch(() => null),
         ]);
         if (isMounted) {
           setTimelineEvents(tlRes.events || []);
           setNotes(notesRes || []);
+          if (caseRes) {
+            if (caseRes.fraud_typology) setTypology(caseRes.fraud_typology);
+            if (caseRes.fraud_typology_source) setTypologySource(caseRes.fraud_typology_source);
+            if (caseRes.fraud_typology_secondary) setTypologySecondary(caseRes.fraud_typology_secondary);
+          }
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -92,6 +105,26 @@ export default function CaseWorkspace({ caseObj, onBack }) {
       isMounted = false;
     };
   }, [currentCase.case_id]);
+
+  // Save Fraud Typology Classification (Prompt 8)
+  const handleSaveTypology = async () => {
+    setSavingTypology(true);
+    try {
+      const res = await api.updateCaseTypology(currentCase.case_id, {
+        fraud_typology: typology,
+        fraud_typology_source: typologySource,
+        fraud_typology_secondary: typologySecondary || null,
+      });
+      currentCase.fraud_typology = res.fraud_typology;
+      currentCase.fraud_typology_source = res.fraud_typology_source;
+      currentCase.fraud_typology_secondary = res.fraud_typology_secondary;
+      setFeedback(`Fraud Typology updated to: ${res.fraud_typology} (Source: ${res.fraud_typology_source})`);
+    } catch (err) {
+      alert(err.message || 'Failed to update fraud typology');
+    } finally {
+      setSavingTypology(false);
+    }
+  };
 
   // Submit for Review
   const handleSubmitReview = async () => {
@@ -239,7 +272,7 @@ export default function CaseWorkspace({ caseObj, onBack }) {
         </div>
 
         {/* Case Metadata Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mt-4 pt-3 border-t border-panel-border/60 text-xs font-mono">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mt-4 pt-3 border-t border-panel-border/60 text-xs font-mono">
           <div>
             <span className="text-[10px] text-gray-500 uppercase block">Victim / Seed Wallet</span>
             <span className="font-bold text-cyan-400 truncate block mt-0.5">
@@ -257,6 +290,10 @@ export default function CaseWorkspace({ caseObj, onBack }) {
             <span className="font-bold text-gray-200 block mt-0.5">
               {currentCase.supervisor_id ? 'Supervisory Agent' : 'Awaiting Review'}
             </span>
+          </div>
+          <div>
+            <span className="text-[10px] text-gray-500 uppercase block">Fraud Typology</span>
+            <span className="font-bold text-yellow-400 truncate block mt-0.5">{typology}</span>
           </div>
           <div>
             <span className="text-[10px] text-gray-500 uppercase block">Priority</span>
@@ -289,6 +326,7 @@ export default function CaseWorkspace({ caseObj, onBack }) {
           { id: 'prioritization', label: 'Suspicious Wallet Prioritization' },
           { id: 'fund_flow_dna', label: 'Fund Flow DNA' },
           { id: 'replay', label: 'Investigation Replay' },
+          { id: 'packet', label: 'Action & Disclosure Packet' },
           { id: 'timeline', label: 'Case Timeline' },
           { id: 'notes', label: 'Investigator Notes' },
         ].map((tab) => (
@@ -334,14 +372,125 @@ export default function CaseWorkspace({ caseObj, onBack }) {
               </div>
             </div>
 
+            {/* Prompt 8: Fraud Typology Classification */}
+            <div className="cyber-panel p-6 border-panel-border bg-panel space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-panel-border/60 pb-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                  <div>
+                    <h3 className="font-bold text-sm text-gray-100 uppercase tracking-wide font-mono">
+                      Fraud Typology Classification
+                    </h3>
+                    <p className="text-[11px] text-gray-400 font-mono">
+                      Case-level crime typology context established from complaint / investigation findings.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-300 border border-yellow-500/30">
+                    Source: {typologySource}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs">
+                <div>
+                  <label className="text-[10px] text-gray-400 uppercase block mb-1.5 font-bold">
+                    Primary Fraud Typology
+                  </label>
+                  <select
+                    value={typology}
+                    onChange={(e) => setTypology(e.target.value)}
+                    disabled={!isInvestigator && !isSupervisor}
+                    className="w-full bg-black/60 border border-panel-border rounded-lg p-2.5 text-gray-200 text-xs font-mono focus:border-cyan-500 focus:outline-none"
+                  >
+                    {[
+                      'Ransomware',
+                      'Phishing',
+                      'Crypto Investment Fraud',
+                      'Investment Scam',
+                      'Romance Scam',
+                      'Sextortion',
+                      'Extortion',
+                      'Impersonation',
+                      'Pig Butchering',
+                      'Account Takeover',
+                      'Other',
+                      'Unknown',
+                    ].map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-gray-400 uppercase block mb-1.5 font-bold">
+                    Classification Source
+                  </label>
+                  <select
+                    value={typologySource}
+                    onChange={(e) => setTypologySource(e.target.value)}
+                    disabled={!isInvestigator && !isSupervisor}
+                    className="w-full bg-black/60 border border-panel-border rounded-lg p-2.5 text-gray-200 text-xs font-mono focus:border-cyan-500 focus:outline-none"
+                  >
+                    <option value="INVESTIGATOR">Investigator Selected</option>
+                    <option value="COMPLAINT">Victim / LEA Complaint</option>
+                    <option value="SYSTEM">System Inferred</option>
+                    <option value="UNKNOWN">Unknown</option>
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  {(isInvestigator || isSupervisor) && (
+                    <button
+                      onClick={handleSaveTypology}
+                      disabled={savingTypology}
+                      className="w-full py-2.5 px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs font-mono transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {savingTypology ? <Clock className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                      Save Typology Classification
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Attribution Separation & Legal Admissibility Guard */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 text-xs font-mono">
+                <div className="p-3 bg-black/40 border border-yellow-500/20 rounded-lg space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-yellow-400 block">
+                    CASE CONTEXT:
+                  </span>
+                  <div className="text-gray-200 font-bold text-sm">
+                    {typology} ({typologySource})
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    Investigative classification based on FIR / victim complaint or officer triage.
+                  </p>
+                </div>
+                <div className="p-3 bg-black/40 border border-cyan-500/20 rounded-lg space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-cyan-400 block">
+                    BLOCKCHAIN BEHAVIORAL FINDINGS:
+                  </span>
+                  <div className="text-gray-200 font-bold text-sm">
+                    Multi-hop fund routing, rapid relay, and exchange ingress
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    Blockchain behavior provides supporting indicators, not legal proof of the crime category.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Quick Access Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div
                 onClick={() => setActiveTab('prioritization')}
                 className="cyber-panel p-5 border-panel-border hover:border-cyan-500/60 cursor-pointer bg-panel/60 transition-all space-y-2"
               >
                 <h4 className="text-xs font-bold font-mono uppercase text-cyan-400">
-                  1. Suspicious Wallet Prioritization
+                  1. Suspicious Prioritization
                 </h4>
                 <p className="text-xs text-gray-400 leading-relaxed font-mono">
                   Inspect ranked candidate wallets, defensible evidence signals, and recommended actions.
@@ -371,6 +520,18 @@ export default function CaseWorkspace({ caseObj, onBack }) {
                   Follow chronological fund propagation step-by-step with interactive timeline playback.
                 </p>
               </div>
+
+              <div
+                onClick={() => setActiveTab('packet')}
+                className="cyber-panel p-5 border-panel-border hover:border-yellow-500/60 cursor-pointer bg-panel/60 transition-all space-y-2"
+              >
+                <h4 className="text-xs font-bold font-mono uppercase text-yellow-400">
+                  4. Action & Disclosure Packet
+                </h4>
+                <p className="text-xs text-gray-400 leading-relaxed font-mono">
+                  Statutory disclosure packet, multi-page PDF generation, JSON export, and supervisory review.
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -378,6 +539,7 @@ export default function CaseWorkspace({ caseObj, onBack }) {
         {activeTab === 'prioritization' && <SuspiciousWalletPrioritization />}
         {activeTab === 'fund_flow_dna' && <FundFlowDna />}
         {activeTab === 'replay' && <InvestigationReplay />}
+        {activeTab === 'packet' && <ActionPacketViewer caseId={currentCase.case_id} caseObj={currentCase} />}
 
         {/* ── Case Timeline View ───────────────────────────────────────────── */}
         {activeTab === 'timeline' && (
@@ -563,3 +725,4 @@ export default function CaseWorkspace({ caseObj, onBack }) {
     </div>
   );
 }
+

@@ -46,6 +46,11 @@ ROLE_PERMISSIONS: Dict[Role, Set[str]] = {
         "evidence:export_authorized",
         "evidence:export",
         "case:submit_review",
+        "packet:generate",
+        "packet:view",
+        "packet:submit",
+        "packet:export",
+        "typology:update",
     },
     Role.INVESTIGATION_SUPERVISOR: {
         "case:view_unit",
@@ -69,6 +74,12 @@ ROLE_PERMISSIONS: Dict[Role, Set[str]] = {
         "evidence:export_authorized",
         "evidence:export",
         "case:update",
+        "packet:generate",
+        "packet:view",
+        "packet:review",
+        "packet:approve",
+        "packet:export",
+        "typology:update",
     },
     Role.SYSTEM_ADMINISTRATOR: {
         "user:manage",
@@ -110,10 +121,11 @@ def evaluate_case_abac(user: Dict[str, Any], case: Dict[str, Any], action: str) 
     if role == Role.SYSTEM_ADMINISTRATOR.value:
         return False, "System Administrators are prohibited from accessing case forensic data (Separation of Duties)."
 
-    # 3. Viewing Cases / Investigation Evidence
+    # 3. Viewing Cases / Investigation Evidence / Action Packets
     if action in (
         "case:view", "trace:view", "candidate:view", "fundflow:view",
-        "replay:view", "report:generate", "evidence:export_authorized", "evidence:export"
+        "replay:view", "report:generate", "evidence:export_authorized", "evidence:export",
+        "packet:view", "packet:generate", "packet:export"
     ):
         if role == Role.INVESTIGATOR.value:
             # Investigator can only view if creator or assigned
@@ -127,8 +139,8 @@ def evaluate_case_abac(user: Dict[str, Any], case: Dict[str, Any], action: str) 
                 return True, "Authorized as unit supervisor."
             return False, f"Unauthorized: Case belongs to unit '{case_unit}', but supervisor is assigned to '{user_unit}'."
 
-    # 4. Updating Cases
-    if action in ("case:update", "case:update_own"):
+    # 4. Updating Cases / Typology
+    if action in ("case:update", "case:update_own", "typology:update"):
         if role == Role.INVESTIGATOR.value:
             if created_by != user_id and assigned_to != user_id:
                 return False, "Unauthorized: Only creator or assigned investigator can edit case."
@@ -142,27 +154,29 @@ def evaluate_case_abac(user: Dict[str, Any], case: Dict[str, Any], action: str) 
             return True, "Authorized to update case."
 
     # 5. Submitting for Review
-    if action == "case:submit_review":
+    if action in ("case:submit_review", "packet:submit"):
         if role != Role.INVESTIGATOR.value:
-            return False, "Only investigators submit cases for review."
+            return False, "Only investigators submit cases or packets for review."
         if created_by != user_id and assigned_to != user_id:
-            return False, "Only owner or assigned investigator can submit case for review."
-        if status_val not in ("DRAFT", "ACTIVE", "CHANGES_REQUESTED"):
+            return False, "Only owner or assigned investigator can submit case or packet for review."
+        if action == "case:submit_review" and status_val not in ("DRAFT", "ACTIVE", "CHANGES_REQUESTED"):
             return False, f"Cannot submit case for review from status '{status_val}'."
-        return True, "Authorized to submit case for review."
+        return True, "Authorized to submit for review."
 
     # 6. Review Actions: APPROVAL, REJECTION, CHANGES REQUESTED
-    if action in ("case:approve", "case:reject", "case:request_changes", "case:review"):
+    if action in ("case:approve", "case:reject", "case:request_changes", "case:review", "packet:review", "packet:approve"):
         if role != Role.INVESTIGATION_SUPERVISOR.value:
-            return False, "Only Investigation Supervisors can review or approve cases."
+            return False, "Only Investigation Supervisors can review or approve cases or packets."
         if user_unit != case_unit:
             return False, "Supervisor cannot review cases outside their authorized unit."
         
         # STRICT SELF-APPROVAL PREVENTION
         if action == "case:approve" and created_by == user_id:
             return False, "Separation of duties violation: A supervisor who created this case cannot approve their own investigation."
+        if action in ("packet:approve", "packet:review") and created_by == user_id:
+            return False, "Separation of duties violation: An investigator or supervisor cannot approve their own action packet."
         
-        if status_val != "UNDER_REVIEW":
+        if action in ("case:approve", "case:reject", "case:request_changes", "case:review") and status_val != "UNDER_REVIEW":
             return False, f"Case must be in 'UNDER_REVIEW' state to approve or request changes (currently '{status_val}')."
         return True, "Authorized to perform supervisory review."
 

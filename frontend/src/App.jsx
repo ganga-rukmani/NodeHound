@@ -16,6 +16,7 @@ import SupervisorConsole from './components/pages/SupervisorConsole';
 import SuspiciousWalletPrioritization from './components/pages/SuspiciousWalletPrioritization';
 import FundFlowDna from './components/pages/FundFlowDna';
 import InvestigationReplay from './components/pages/InvestigationReplay';
+import ActionPacketViewer from './components/pages/ActionPacketViewer';
 import NewInvestigation from './components/pages/NewInvestigation';
 import InvestigationOverview from './components/pages/InvestigationOverview';
 import TransactionInvestigation from './components/pages/TransactionInvestigation';
@@ -382,6 +383,7 @@ function MainWorkspace() {
                 {currentSection === 'evidence_explorer' && <EvidenceExplorer />}
                 {currentSection === 'evidence_integrity' && <EvidenceIntegrity />}
                 {currentSection === 'report' && <InvestigationReportView />}
+                {currentSection === 'action_packet' && <ActionPacketViewer caseId={activeCase?.case_id} caseObj={activeCase} />}
               </div>
             </main>
 

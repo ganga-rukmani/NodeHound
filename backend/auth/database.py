@@ -13,6 +13,8 @@ Enforces:
 import os
 import sqlite3
 import uuid
+import json
+import hashlib
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
@@ -155,6 +157,28 @@ def init_database():
     );
     """)
 
+    # 8. Case Action Packets Table (Prompt 9: Investigator Action & Disclosure Packet)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS case_action_packets (
+        id TEXT PRIMARY KEY,
+        case_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'DRAFT', -- DRAFT, READY_FOR_REVIEW, APPROVED, CHANGES_REQUESTED, REJECTED
+        packet_data TEXT NOT NULL,
+        evidence_hash TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        submitted_at TEXT,
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        review_decision TEXT,
+        review_comments TEXT,
+        FOREIGN KEY (case_id) REFERENCES cases(case_id),
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    );
+    """)
+
     # Ensure schema migrations for cases table columns if missing
     cursor.execute("PRAGMA table_info(cases);")
     existing_cols = {row["name"] for row in cursor.fetchall()}
@@ -166,6 +190,18 @@ def init_database():
         cursor.execute("ALTER TABLE cases ADD COLUMN closure_reason TEXT;")
     if "victim_wallet" not in existing_cols:
         cursor.execute("ALTER TABLE cases ADD COLUMN victim_wallet TEXT;")
+    if "fraud_typology" not in existing_cols:
+        cursor.execute("ALTER TABLE cases ADD COLUMN fraud_typology TEXT DEFAULT 'UNKNOWN';")
+    if "fraud_typology_source" not in existing_cols:
+        cursor.execute("ALTER TABLE cases ADD COLUMN fraud_typology_source TEXT DEFAULT 'UNKNOWN';")
+    if "fraud_typology_secondary" not in existing_cols:
+        cursor.execute("ALTER TABLE cases ADD COLUMN fraud_typology_secondary TEXT;")
+    if "incident_date" not in existing_cols:
+        cursor.execute("ALTER TABLE cases ADD COLUMN incident_date TEXT;")
+    if "reported_amount" not in existing_cols:
+        cursor.execute("ALTER TABLE cases ADD COLUMN reported_amount REAL;")
+    if "complaint_reference" not in existing_cols:
+        cursor.execute("ALTER TABLE cases ADD COLUMN complaint_reference TEXT;")
 
     conn.commit()
     conn.close()
@@ -602,4 +638,214 @@ def get_case_timeline_events(case_id: str) -> list[dict]:
         return events
     finally:
         conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fraud Typology Classification (Prompt 8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+CONTROLLED_FRAUD_TYPOLOGIES = [
+    "Ransomware",
+    "Phishing",
+    "Crypto Investment Fraud",
+    "Investment Scam",
+    "Romance Scam",
+    "Sextortion",
+    "Extortion",
+    "Impersonation",
+    "Pig Butchering",
+    "Account Takeover",
+    "Other",
+    "Unknown",
+]
+
+FRAUD_TYPOLOGY_MAP = {t.lower().replace(" ", "_"): t for t in CONTROLLED_FRAUD_TYPOLOGIES}
+FRAUD_TYPOLOGY_MAP.update({t.lower(): t for t in CONTROLLED_FRAUD_TYPOLOGIES})
+FRAUD_TYPOLOGY_MAP.update({t.upper(): t for t in CONTROLLED_FRAUD_TYPOLOGIES})
+
+VALID_TYPOLOGY_SOURCES = {"INVESTIGATOR", "COMPLAINT", "SYSTEM", "UNKNOWN"}
+
+
+def normalize_fraud_typology(typology_str: Optional[str]) -> str:
+    """Normalizes fraud typology against controlled list; defaults to Unknown."""
+    if not typology_str:
+        return "Unknown"
+    norm_key = typology_str.strip().lower().replace(" ", "_")
+    if norm_key in FRAUD_TYPOLOGY_MAP:
+        return FRAUD_TYPOLOGY_MAP[norm_key]
+    for valid in CONTROLLED_FRAUD_TYPOLOGIES:
+        if valid.lower() == typology_str.strip().lower():
+            return valid
+    return "Other" if typology_str.strip() else "Unknown"
+
+
+def update_case_typology(
+    case_id: str,
+    fraud_typology: str,
+    fraud_typology_source: str = "INVESTIGATOR",
+    fraud_typology_secondary: Optional[str] = None
+) -> dict:
+    """Updates case fraud typology with controlled validation."""
+    conn = get_connection()
+    try:
+        norm_typology = normalize_fraud_typology(fraud_typology)
+        norm_source = (fraud_typology_source or "UNKNOWN").strip().upper()
+        if norm_source not in VALID_TYPOLOGY_SOURCES:
+            norm_source = "INVESTIGATOR"
+
+        norm_secondary = normalize_fraud_typology(fraud_typology_secondary) if fraud_typology_secondary else None
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        conn.execute("""
+        UPDATE cases
+        SET fraud_typology = ?,
+            fraud_typology_source = ?,
+            fraud_typology_secondary = ?,
+            updated_at = ?
+        WHERE case_id = ?
+        """, (norm_typology, norm_source, norm_secondary, now_iso, case_id))
+        conn.commit()
+
+        row = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Investigator Action & Disclosure Packet (Prompt 9)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def calculate_evidence_integrity_hash(data: Any) -> str:
+    """Computes deterministic SHA-256 canonical integrity hash of evidence packet."""
+    canonical_json = json.dumps(data, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(canonical_json).hexdigest()
+
+
+def get_action_packet(case_id: str) -> Optional[dict]:
+    """Retrieves the latest Action & Disclosure Packet for a case."""
+    conn = get_connection()
+    try:
+        row = conn.execute("""
+        SELECT p.*, u.full_name as creator_name, r.full_name as reviewer_name
+        FROM case_action_packets p
+        LEFT JOIN users u ON p.created_by = u.id
+        LEFT JOIN users r ON p.reviewed_by = r.id
+        WHERE p.case_id = ?
+        ORDER BY p.created_at DESC
+        LIMIT 1
+        """, (case_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if d.get("packet_data"):
+            try:
+                d["packet"] = json.loads(d["packet_data"])
+            except Exception:
+                d["packet"] = {}
+        return d
+    finally:
+        conn.close()
+
+
+def save_action_packet(
+    case_id: str,
+    packet_dict: dict,
+    user_id: str,
+    status: str = "DRAFT"
+) -> dict:
+    """Saves or updates the action packet in the database."""
+    conn = get_connection()
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        packet_id = f"pkt_{uuid.uuid4().hex[:12]}"
+        evidence_hash = calculate_evidence_integrity_hash(packet_dict.get("evidence", packet_dict))
+
+        # Check existing packet for case
+        existing = conn.execute("SELECT id FROM case_action_packets WHERE case_id = ?", (case_id,)).fetchone()
+        if existing:
+            conn.execute("""
+            UPDATE case_action_packets
+            SET status = ?,
+                packet_data = ?,
+                evidence_hash = ?,
+                updated_at = ?
+            WHERE case_id = ?
+            """, (status, json.dumps(packet_dict), evidence_hash, now_iso, case_id))
+            pkt_id = existing["id"]
+        else:
+            conn.execute("""
+            INSERT INTO case_action_packets (
+                id, case_id, status, packet_data, evidence_hash,
+                created_by, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                packet_id,
+                case_id,
+                status,
+                json.dumps(packet_dict),
+                evidence_hash,
+                user_id,
+                now_iso,
+                now_iso
+            ))
+            pkt_id = packet_id
+        conn.commit()
+
+        return get_action_packet(case_id)
+    finally:
+        conn.close()
+
+
+def submit_action_packet(case_id: str, user_id: str) -> dict:
+    """Submits the action packet for supervisory review."""
+    conn = get_connection()
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        conn.execute("""
+        UPDATE case_action_packets
+        SET status = 'READY_FOR_REVIEW',
+            submitted_at = ?,
+            updated_at = ?
+        WHERE case_id = ?
+        """, (now_iso, now_iso, case_id))
+        conn.commit()
+        return get_action_packet(case_id)
+    finally:
+        conn.close()
+
+
+def review_action_packet(
+    case_id: str,
+    reviewer_id: str,
+    decision: str,
+    comments: str
+) -> dict:
+    """Records supervisor review decision for the action packet."""
+    conn = get_connection()
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        norm_decision = decision.upper().strip()
+        status_map = {
+            "APPROVED": "APPROVED",
+            "CHANGES_REQUESTED": "CHANGES_REQUESTED",
+            "REJECTED": "REJECTED"
+        }
+        new_status = status_map.get(norm_decision, "CHANGES_REQUESTED")
+
+        conn.execute("""
+        UPDATE case_action_packets
+        SET status = ?,
+            reviewed_by = ?,
+            reviewed_at = ?,
+            review_decision = ?,
+            review_comments = ?,
+            updated_at = ?
+        WHERE case_id = ?
+        """, (new_status, reviewer_id, now_iso, norm_decision, comments.strip(), now_iso, case_id))
+        conn.commit()
+        return get_action_packet(case_id)
+    finally:
+        conn.close()
+
 

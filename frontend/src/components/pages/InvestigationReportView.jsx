@@ -36,6 +36,7 @@ export default function InvestigationReportView() {
     lines.push(`**Investigator ID:** ${caseMetadata.investigatorId}`);
     lines.push(`**Generated:** ${new Date().toISOString()}`);
     lines.push(`**Target Chain:** ${chain.toUpperCase()}`);
+    lines.push(`**Fraud Typology:** ${caseMetadata.fraudTypology || 'Unknown'} (Source: ${caseMetadata.fraudTypologySource || 'Investigator Selected'})`);
     lines.push(`**Seed Wallet:** \`${seed_address}\``);
     lines.push(`**Evidence Integrity Checksum (SHA-256):** \`${hash}\``);
     lines.push(`\n---\n`);

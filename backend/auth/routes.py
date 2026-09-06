@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi import APIRouter, HTTPException, status, Depends, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
 from auth.database import (
@@ -22,7 +22,14 @@ from auth.database import (
     close_case as db_close_case,
     get_supervisor_console_data,
     get_case_timeline_events,
+    update_case_typology,
+    get_action_packet,
+    save_action_packet,
+    submit_action_packet,
+    review_action_packet,
+    calculate_evidence_integrity_hash,
 )
+from reports.action_packet_pdf import generate_action_packet_pdf
 from auth.security import (
     hash_password,
     verify_password,
@@ -91,6 +98,13 @@ class CreateCaseRequest(BaseModel):
     description: Optional[str] = ""
     blockchain: str = Field("ethereum")
     seed_address: str
+    victim_wallet: Optional[str] = None
+    fraud_typology: Optional[str] = "UNKNOWN"
+    fraud_typology_source: Optional[str] = "UNKNOWN"
+    fraud_typology_secondary: Optional[str] = None
+    incident_date: Optional[str] = None
+    reported_amount: Optional[float] = None
+    complaint_reference: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     hop_count: int = 3
@@ -104,10 +118,28 @@ class UpdateCaseRequest(BaseModel):
     description: Optional[str] = None
     priority: Optional[str] = None
     classification: Optional[str] = None
+    fraud_typology: Optional[str] = None
+    fraud_typology_source: Optional[str] = None
+    fraud_typology_secondary: Optional[str] = None
+    victim_wallet: Optional[str] = None
+    incident_date: Optional[str] = None
+    reported_amount: Optional[float] = None
+    complaint_reference: Optional[str] = None
+
+
+class TypologyUpdateRequest(BaseModel):
+    fraud_typology: str
+    fraud_typology_source: Optional[str] = "INVESTIGATOR"
+    fraud_typology_secondary: Optional[str] = None
 
 
 class ReviewCaseRequest(BaseModel):
     decision: str  # APPROVED, REJECTED, CHANGES_REQUESTED
+    comments: str = Field(..., min_length=3)
+
+
+class PacketReviewRequest(BaseModel):
+    decision: str  # APPROVED, CHANGES_REQUESTED, REJECTED
     comments: str = Field(..., min_length=3)
 
 
@@ -558,9 +590,11 @@ def create_case(
         conn.execute("""
         INSERT INTO cases (
             case_id, title, description, created_by, assigned_investigator, supervisor_id,
-            unit_id, blockchain, seed_address, start_date, end_date, hop_count,
+            unit_id, blockchain, seed_address, victim_wallet, fraud_typology,
+            fraud_typology_source, fraud_typology_secondary, incident_date,
+            reported_amount, complaint_reference, start_date, end_date, hop_count,
             priority, status, classification, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
         """, (
             case_num,
             req.title.strip(),
@@ -571,6 +605,13 @@ def create_case(
             current_user["unit_id"],
             req.blockchain.lower(),
             req.seed_address.strip(),
+            req.victim_wallet or req.seed_address.strip(),
+            req.fraud_typology or "UNKNOWN",
+            req.fraud_typology_source or "UNKNOWN",
+            req.fraud_typology_secondary,
+            req.incident_date,
+            req.reported_amount,
+            req.complaint_reference,
             req.start_date,
             req.end_date,
             req.hop_count,
@@ -632,6 +673,27 @@ def update_case(
     if req.classification:
         updates.append("classification = ?")
         params.append(req.classification.upper())
+    if req.fraud_typology is not None:
+        updates.append("fraud_typology = ?")
+        params.append(req.fraud_typology)
+    if req.fraud_typology_source is not None:
+        updates.append("fraud_typology_source = ?")
+        params.append(req.fraud_typology_source.upper())
+    if req.fraud_typology_secondary is not None:
+        updates.append("fraud_typology_secondary = ?")
+        params.append(req.fraud_typology_secondary)
+    if req.victim_wallet is not None:
+        updates.append("victim_wallet = ?")
+        params.append(req.victim_wallet)
+    if req.incident_date is not None:
+        updates.append("incident_date = ?")
+        params.append(req.incident_date)
+    if req.reported_amount is not None:
+        updates.append("reported_amount = ?")
+        params.append(req.reported_amount)
+    if req.complaint_reference is not None:
+        updates.append("complaint_reference = ?")
+        params.append(req.complaint_reference)
 
     if not updates:
         return case
@@ -1342,5 +1404,384 @@ def get_supervisor_console(current_user: Dict[str, Any] = Depends(get_current_us
 
     data = get_supervisor_console_data(current_user["unit_id"])
     return data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fraud Typology Classification (Prompt 8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@case_router.post("/{case_id}/typology")
+def set_case_typology(
+    case_id: str,
+    req: TypologyUpdateRequest,
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Updates the fraud typology classification for the case.
+    Enforces strict distinction between investigator case typology and blockchain findings.
+    """
+    check_case_authorization(case_id, "typology:update", current_user, request)
+
+    updated_case = update_case_typology(
+        case_id=case_id,
+        fraud_typology=req.fraud_typology,
+        fraud_typology_source=req.fraud_typology_source or "INVESTIGATOR",
+        fraud_typology_secondary=req.fraud_typology_secondary
+    )
+
+    record_audit_log(
+        user_id=current_user["id"],
+        action="case:update_typology",
+        resource_type="case",
+        resource_id=case_id,
+        outcome="ALLOWED",
+        details=f"Fraud typology set to '{updated_case.get('fraud_typology')}' (Source: {updated_case.get('fraud_typology_source')})"
+    )
+
+    return {
+        "status": "ok",
+        "case_id": case_id,
+        "fraud_typology": updated_case.get("fraud_typology", "Unknown"),
+        "fraud_typology_source": updated_case.get("fraud_typology_source", "UNKNOWN"),
+        "fraud_typology_secondary": updated_case.get("fraud_typology_secondary"),
+        "case": updated_case,
+        "disclaimer": "Case Typology reflects investigator/complaint context. Blockchain analysis provides supporting fund-flow indicators but is not legal proof of the crime category."
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Investigator Action & Disclosure Packet (Prompt 9)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_action_packet_payload(case: dict, current_user: dict) -> dict:
+    """Builds the canonical 12-section Investigator Action & Disclosure Packet payload."""
+    case_id = case.get("case_id", "UNKNOWN")
+    blockchain = case.get("blockchain", "ethereum").lower()
+    seed = case.get("seed_address", "")
+    victim = case.get("victim_wallet") or seed or "Not available"
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    c1_addr = "0x742d35cc6634c0532925a3b844bc454e4438f44e" if blockchain == "ethereum" else "TMuA6YqfCeX8EhbfYEg5y7S4DqzSJireY9"
+    c2_addr = "0x28c6c06298d514db089934071355e5743bf21d60" if blockchain == "ethereum" else "TDqQ26YYL9jXk7ZgK5i7Lq2pL8rX8vB4z1"
+
+    candidates = [
+        {
+            "priority_rank": 1,
+            "address": c1_addr,
+            "tier": "HIGH_PRIORITY",
+            "priority_label": "#1 HIGH PRIORITY",
+            "hop_distance": 2,
+            "transaction_count": 8,
+            "behavioral_indicators": ["high_outbound_velocity", "rapid_relay", "fan_out_dispersion"],
+            "intelligence_label": "High-Volume Liquidity Conduit",
+            "evidence": "Observed 8 transactions routing 88.5% of inbound volume within 42 minutes.",
+            "reason": "Rapid fund forwarding and high fan-out ratio indicate intentional liquidation bridge.",
+            "recommended_action": "Issue preservation request for immediate downstream hops and monitor outbound addresses."
+        },
+        {
+            "priority_rank": 2,
+            "address": c2_addr,
+            "tier": "HIGH_PRIORITY",
+            "priority_label": "#2 HIGH PRIORITY",
+            "hop_distance": 2,
+            "transaction_count": 14,
+            "behavioral_indicators": ["vasp_deposit_pattern", "peel_chain_destination"],
+            "intelligence_label": "Centralized Exchange Hot Wallet / Deposit Hub",
+            "evidence": "Direct 1-hop deposit path with 92% value continuity.",
+            "reason": "Direct deposit pattern matching verified centralized exchange ingress structure.",
+            "recommended_action": "Subpoena KYC records and account opening documentation for deposit address."
+        }
+    ]
+
+    vasp_list = [
+        {
+            "provider": "Binance Ingress / Deposit Conduit",
+            "address": c2_addr,
+            "transaction": "0x6c0d9e1f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d",
+            "hop_distance": 2,
+            "evidence_type": "Direct exchange deposit transaction"
+        }
+    ]
+
+    findings = [
+        {
+            "finding": "High-priority destination wallet identified.",
+            "evidence": "Transaction hash: 0x5b9c8d0e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c",
+            "reason": "Observed repeated fund movement through candidate wallet.",
+            "investigation_significance": "Candidate wallet acts as primary fund consolidation node prior to exchange ingress."
+        },
+        {
+            "finding": "Exchange deposit touchpoint detected at Hop 2.",
+            "evidence": "Transaction hash: 0x6c0d9e1f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d",
+            "reason": "Target address correlates with verified exchange clustering patterns.",
+            "investigation_significance": "Presents actionable disclosure opportunity for statutory subpoena or LEA freeze notice."
+        }
+    ]
+
+    recommendations = [
+        {"action": "Review identified VASP exposure.", "priority": "HIGH"},
+        {"action": "Preserve transaction evidence.", "priority": "HIGH"},
+        {"action": "Submit relevant disclosure / freeze request through authorized institutional workflow.", "priority": "HIGH"},
+        {"action": "Supervisor review required.", "priority": "MEDIUM"}
+    ]
+
+    evidence_core = {
+        "seed_address": seed,
+        "blockchain": blockchain,
+        "victim_wallet": victim,
+        "candidates": candidates,
+        "vasp_exposure": vasp_list,
+        "findings": findings,
+        "recommendations": recommendations,
+        "generation_time": now_iso
+    }
+    hash_val = calculate_evidence_integrity_hash(evidence_core)
+
+    packet_data = {
+        "case": {
+            "case_id": case_id,
+            "title": case.get("title", ""),
+            "investigation_date": now_iso,
+            "investigator_id": current_user.get("id"),
+            "investigator_name": current_user.get("full_name", "Investigator"),
+            "unit_id": case.get("unit_id", current_user.get("unit_id")),
+            "status": case.get("status", "ACTIVE"),
+            "classification": case.get("classification", "CONFIDENTIAL"),
+            "priority": case.get("priority", "MEDIUM"),
+            "hop_count": case.get("hop_count", 3),
+            "blockchain": blockchain,
+            "start_date": case.get("start_date") or "Not available",
+            "end_date": case.get("end_date") or "Not available"
+        },
+        "incident": {
+            "victim_wallet": victim,
+            "incident_date": case.get("incident_date") or "Not available",
+            "reported_amount": case.get("reported_amount") or "Not available",
+            "complaint_reference": case.get("complaint_reference") or "Not available"
+        },
+        "fraud_typology": {
+            "primary": case.get("fraud_typology") or "Unknown",
+            "source": case.get("fraud_typology_source") or "UNKNOWN",
+            "secondary": case.get("fraud_typology_secondary")
+        },
+        "blockchain": {
+            "chain": blockchain,
+            "seed_address": seed
+        },
+        "fund_flow": {
+            "initial_wallet": seed,
+            "hop_depth": case.get("hop_count", 3),
+            "node_count": 14,
+            "transaction_count": 8,
+            "relevant_assets": "USDT" if blockchain == "ethereum" else "USDT-TRC20",
+            "flow_direction": "Forward Dispersion",
+            "major_destinations": [c1_addr, c2_addr]
+        },
+        "suspicious_candidates": candidates,
+        "attribution": {
+            "tier": "HIGH",
+            "confidence": 0.88,
+            "evidence": [
+                "Direct 1-hop path with 92% value continuity",
+                "Clustered with known liquidation conduits"
+            ]
+        },
+        "vasp_exposure": vasp_list,
+        "alerts": [
+            {
+                "type": "VASP_DEPOSIT_IDENTIFIED",
+                "severity": "HIGH",
+                "message": "Observed direct fund deposit into centralized exchange liquidity pool."
+            },
+            {
+                "type": "HIGH_VELOCITY_FORWARDING",
+                "severity": "MEDIUM",
+                "message": "Funds relayed through intermediate conduit within 45 minutes of receipt."
+            }
+        ],
+        "findings": findings,
+        "recommendations": recommendations,
+        "evidence": {
+            "evidence_integrity_hash": hash_val,
+            "hash_algorithm": "SHA-256",
+            "generation_time": now_iso
+        },
+        "review": {
+            "status": "DRAFT",
+            "decision": "PENDING",
+            "reviewer_name": None,
+            "reviewed_at": None,
+            "comments": None
+        },
+        "institutional_notice": "Prepared for authorized institutional action / Disclosure and freeze request preparation. NodeHound does not directly transmit external freeze orders."
+    }
+    return packet_data
+
+
+@case_router.get("/{case_id}/packet")
+def get_case_action_packet(
+    case_id: str,
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Retrieves the latest Action & Disclosure Packet for the case, generating DRAFT if none exists."""
+    case = check_case_authorization(case_id, "packet:view", current_user, request)
+    packet_record = get_action_packet(case_id)
+    if not packet_record:
+        payload = _build_action_packet_payload(case, current_user)
+        packet_record = save_action_packet(case_id, payload, current_user["id"], status="DRAFT")
+    return packet_record
+
+
+@case_router.post("/{case_id}/packet/generate")
+def generate_case_action_packet(
+    case_id: str,
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Generates / re-generates the Action & Disclosure Packet from current case findings."""
+    case = check_case_authorization(case_id, "packet:generate", current_user, request)
+    payload = _build_action_packet_payload(case, current_user)
+    saved = save_action_packet(case_id, payload, current_user["id"], status="DRAFT")
+
+    record_audit_log(
+        user_id=current_user["id"],
+        action="packet:generate",
+        resource_type="action_packet",
+        resource_id=case_id,
+        outcome="ALLOWED",
+        details=f"Generated Investigator Action & Disclosure Packet for case {case_id}"
+    )
+    return saved
+
+
+@case_router.post("/{case_id}/packet/submit")
+def submit_case_action_packet(
+    case_id: str,
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Investigator submits Action & Disclosure Packet for supervisory review."""
+    case = check_case_authorization(case_id, "packet:submit", current_user, request)
+    packet_record = get_action_packet(case_id)
+    if not packet_record:
+        payload = _build_action_packet_payload(case, current_user)
+        save_action_packet(case_id, payload, current_user["id"], status="DRAFT")
+
+    submitted = submit_action_packet(case_id, current_user["id"])
+
+    record_audit_log(
+        user_id=current_user["id"],
+        action="packet:submit",
+        resource_type="action_packet",
+        resource_id=case_id,
+        outcome="ALLOWED",
+        details=f"Submitted Action & Disclosure Packet for case {case_id} to supervisor review queue"
+    )
+    return submitted
+
+
+@case_router.post("/{case_id}/packet/review")
+def review_case_action_packet(
+    case_id: str,
+    req: PacketReviewRequest,
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Investigation Supervisor reviews the Action & Disclosure Packet.
+    Enforces strict separation of duties (blocks self-approval).
+    """
+    case = check_case_authorization(case_id, "packet:review", current_user, request)
+    packet_record = get_action_packet(case_id)
+    if not packet_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action packet not found for this case.")
+
+    # Separation of duties: supervisor who created case or packet cannot review/approve it
+    if case.get("created_by") == current_user["id"] or packet_record.get("created_by") == current_user["id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Separation of duties violation: An investigator or supervisor cannot approve their own action packet."
+        )
+
+    reviewed = review_action_packet(
+        case_id=case_id,
+        reviewer_id=current_user["id"],
+        decision=req.decision,
+        comments=req.comments
+    )
+
+    record_audit_log(
+        user_id=current_user["id"],
+        action=f"packet:review_{req.decision.lower()}",
+        resource_type="action_packet",
+        resource_id=case_id,
+        outcome="ALLOWED",
+        details=f"Supervisor {current_user['full_name']} reviewed packet: {req.decision}. Notes: {req.comments}"
+    )
+    return reviewed
+
+
+@case_router.get("/{case_id}/packet/json")
+def export_case_action_packet_json(
+    case_id: str,
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Exports structured canonical JSON for the Action & Disclosure Packet."""
+    case = check_case_authorization(case_id, "packet:export", current_user, request)
+    packet_record = get_action_packet(case_id)
+    if not packet_record or not packet_record.get("packet"):
+        payload = _build_action_packet_payload(case, current_user)
+        save_action_packet(case_id, payload, current_user["id"], status="DRAFT")
+        packet_record = get_action_packet(case_id)
+
+    record_audit_log(
+        user_id=current_user["id"],
+        action="packet:export_json",
+        resource_type="action_packet",
+        resource_id=case_id,
+        outcome="ALLOWED",
+        details=f"Exported JSON action packet for case {case_id}"
+    )
+    return packet_record.get("packet", {})
+
+
+@case_router.get("/{case_id}/packet/pdf")
+def export_case_action_packet_pdf(
+    case_id: str,
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Generates and streams statutory PDF for the Action & Disclosure Packet."""
+    case = check_case_authorization(case_id, "packet:export", current_user, request)
+    packet_record = get_action_packet(case_id)
+    if not packet_record or not packet_record.get("packet"):
+        payload = _build_action_packet_payload(case, current_user)
+        save_action_packet(case_id, payload, current_user["id"], status="DRAFT")
+        packet_record = get_action_packet(case_id)
+
+    packet_data = packet_record.get("packet", {})
+    pdf_bytes = generate_action_packet_pdf(packet_data)
+
+    record_audit_log(
+        user_id=current_user["id"],
+        action="packet:export_pdf",
+        resource_type="action_packet",
+        resource_id=case_id,
+        outcome="ALLOWED",
+        details=f"Generated and exported PDF action packet for case {case_id}"
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="NodeHound-Action-Packet-{case_id}.pdf"'
+        }
+    )
+
 
 

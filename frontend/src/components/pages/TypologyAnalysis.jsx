@@ -12,9 +12,12 @@ export default function TypologyAnalysis() {
     traceData,
     selectAddress,
     selectTransaction,
+    caseMetadata,
   } = useInvestigation();
 
   const { detected_patterns = [], chain = 'ethereum' } = traceData || {};
+  const fraudTypology = caseMetadata?.fraudTypology || 'Unknown';
+  const fraudSource = caseMetadata?.fraudTypologySource || 'Investigator Selected';
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -40,6 +43,30 @@ export default function TypologyAnalysis() {
             <span className="text-xs font-mono text-yellow-400 bg-black/40 px-3 py-2 rounded-lg border border-panel-border">
               {detected_patterns.length} Pattern Detection{detected_patterns.length !== 1 ? 's' : ''}
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Case Typology vs Blockchain Findings Distinction (Prompt 8) ────── */}
+      <div className="cyber-panel p-5 border-panel-border bg-black/40 space-y-3 font-mono text-xs">
+        <div className="flex items-center gap-2 font-bold text-gray-200 uppercase">
+          <Info className="w-4 h-4 text-cyan-400" />
+          Typology &amp; Attributive Distinction Guard
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-3 bg-panel border border-yellow-500/30 rounded-lg space-y-1">
+            <span className="text-[10px] uppercase font-bold text-yellow-400 block">CASE CONTEXT:</span>
+            <div className="text-sm font-bold text-gray-100">{fraudTypology}</div>
+            <div className="text-[10px] text-gray-400">Classification Source: {fraudSource}</div>
+          </div>
+          <div className="p-3 bg-panel border border-cyan-500/30 rounded-lg space-y-1">
+            <span className="text-[10px] uppercase font-bold text-cyan-400 block">BLOCKCHAIN BEHAVIORAL FINDINGS:</span>
+            <div className="text-sm font-bold text-gray-100">
+              {detected_patterns.length > 0 ? `${detected_patterns.length} graph pattern(s) identified` : 'Standard multi-hop fund routing'}
+            </div>
+            <div className="text-[10px] text-gray-400">
+              Notice: Blockchain analysis provides supporting indicators, not legal proof of the crime category.
+            </div>
           </div>
         </div>
       </div>
