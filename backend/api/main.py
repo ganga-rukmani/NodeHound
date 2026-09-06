@@ -55,6 +55,8 @@ from intelligence.typology_detector import detect_typologies
 from intelligence.vasp_identifier import nearest_vasp
 from reports.investigation_report import build_investigation_report
 from scoring.chain_model import load_chain_model, predict_risk
+from auth.database import init_database, record_audit_log
+from auth.routes import auth_router, case_router
 
 load_dotenv()  # reads .env at project root into os.environ, if present
 
@@ -128,6 +130,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
+app.include_router(case_router)
+
 # --- credentials / config — optional, loaded from .env ---
 BIGQUERY_PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 TRONGRID_API_KEY = os.environ.get("TRONGRID_API_KEY")
@@ -158,6 +163,13 @@ _last_trace_candidates: list[dict] = []
 @app.on_event("startup")
 def load_caches():
     global _eth_label_lookup, _tron_label_lookup, _btc_label_lookup, _calibrated_model, _chain_models
+    print("[api] initializing security and authorization database...")
+    try:
+        init_database()
+        print("[api] security database initialized successfully")
+    except Exception as e:
+        print(f"[api] ERROR initializing security database: {e}")
+
     print("[api] loading label lookups...")
 
     try:
@@ -210,6 +222,7 @@ class TraceRequest(BaseModel):
     max_hops: int = 3
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    case_id: Optional[str] = None
 
 
 def _node_to_dict(node: AddressNode) -> dict:

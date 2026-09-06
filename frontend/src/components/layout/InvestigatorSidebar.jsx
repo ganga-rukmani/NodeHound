@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  FolderLock,
   PlusCircle,
   LayoutDashboard,
   Layers,
@@ -27,6 +28,7 @@ export const NAV_GROUPS = [
   {
     title: 'Investigation Scope',
     items: [
+      { id: 'case_management', label: '0. Cases & Governance (RBAC)', icon: FolderLock },
       { id: 'new_investigation', label: '1. New Investigation', icon: PlusCircle },
       { id: 'overview', label: '2. Case Overview', icon: LayoutDashboard },
     ],
@@ -87,8 +89,8 @@ export default function InvestigatorSidebar() {
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeSection === item.id;
-                // If not traced yet and not new_investigation, style it faded
-                const isDisabled = !isTraced && item.id !== 'new_investigation';
+                // If not traced yet and not new_investigation or case_management, style it faded
+                const isDisabled = !isTraced && item.id !== 'new_investigation' && item.id !== 'case_management';
 
                 return (
                   <button

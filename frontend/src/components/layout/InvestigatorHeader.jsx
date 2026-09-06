@@ -1,6 +1,7 @@
 import React from 'react';
-import { Shield, Sparkles, Database, BarChart2, PlusCircle, ExternalLink, Activity } from 'lucide-react';
+import { Shield, Sparkles, Database, BarChart2, PlusCircle, ExternalLink, Activity, User, LogIn, LogOut, ShieldCheck, ShieldAlert, KeyRound } from 'lucide-react';
 import { useInvestigation } from '../../context/InvestigationContext';
+import { useAuth } from '../../context/AuthContext';
 import AddressBadge from '../common/AddressBadge';
 import clsx from 'clsx';
 
@@ -15,6 +16,8 @@ export default function InvestigatorHeader({ onOpenDashboard, onNewInvestigation
     activeSection,
     setActiveSection,
   } = useInvestigation();
+
+  const { user, setAuthModalOpen, logout, isSupervisor, isAdmin, isInvestigator } = useAuth();
 
   const isTraced = Boolean(traceData);
 
@@ -84,8 +87,58 @@ export default function InvestigatorHeader({ onOpenDashboard, onNewInvestigation
           title="Case History Dashboard"
         >
           <BarChart2 className="w-3.5 h-3.5" />
-          <span>Dashboard</span>
+          <span>Analytics</span>
         </button>
+
+        {/* User Auth & RBAC Badge */}
+        {user ? (
+          <div className="flex items-center gap-2 pl-2 border-l border-panel-border">
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 transition-colors text-left"
+              title="Click to view security profile or switch personas"
+            >
+              <div className="w-6 h-6 rounded bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-mono text-xs font-bold">
+                {user.full_name?.slice(0, 1) || 'U'}
+              </div>
+              <div className="hidden md:flex flex-col">
+                <span className="text-xs font-medium text-gray-200 leading-tight truncate max-w-[120px]">
+                  {user.full_name}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={clsx(
+                      'text-[9px] font-mono px-1 py-0.2 rounded uppercase font-bold tracking-wider',
+                      isSupervisor && 'text-amber-400 bg-amber-500/10 border border-amber-500/20',
+                      isAdmin && 'text-rose-400 bg-rose-500/10 border border-rose-500/20',
+                      isInvestigator && 'text-cyan-400 bg-cyan-500/10 border border-cyan-500/20'
+                    )}
+                  >
+                    {user.role === 'INVESTIGATION_SUPERVISOR' ? 'SUPERVISOR' : user.role === 'SYSTEM_ADMINISTRATOR' ? 'ADMIN' : 'INVESTIGATOR'}
+                  </span>
+                  <span className="text-[9px] font-mono text-gray-500">
+                    {user.unit_id?.replace('UNIT-', '')}
+                  </span>
+                </div>
+              </div>
+            </button>
+            <button
+              onClick={logout}
+              className="p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 text-gray-500 transition-colors"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setAuthModalOpen(true)}
+            className="cyber-button-primary text-xs py-1.5 px-3 flex items-center gap-1.5"
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            <span>Sign In</span>
+          </button>
+        )}
       </div>
     </header>
   );

@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { api } from './api.js';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { InvestigationProvider, useInvestigation } from './context/InvestigationContext';
 import Loading from './components/Loading';
 import Dashboard from './components/Dashboard';
 import InvestigatorHeader from './components/layout/InvestigatorHeader';
 import InvestigatorSidebar from './components/layout/InvestigatorSidebar';
 import TxDetailDrawer from './components/common/TxDetailDrawer';
+import AuthModal from './components/auth/AuthModal';
 
-// 18 Page Views + Graph
+// Case Governance & 18 Page Views + Graph
+import CaseManagement from './components/pages/CaseManagement';
 import NewInvestigation from './components/pages/NewInvestigation';
 import InvestigationOverview from './components/pages/InvestigationOverview';
 import TransactionInvestigation from './components/pages/TransactionInvestigation';
@@ -159,6 +162,8 @@ function MainWorkspace() {
     clearCase,
   } = useInvestigation();
 
+  const { authModalOpen } = useAuth();
+
   const [viewState, setViewState] = useState('app'); // 'app' | 'loading' | 'dashboard' | 'error'
   const [error, setError] = useState(null);
   const [abortController, setAbortController] = useState(null);
@@ -250,8 +255,8 @@ function MainWorkspace() {
     setViewState('app');
   };
 
-  // If no trace has been loaded yet, show the New Investigation form
-  const currentSection = !traceData ? 'new_investigation' : activeSection;
+  // If no trace has been loaded yet, show the New Investigation form (or Case Management)
+  const currentSection = (!traceData && activeSection !== 'case_management') ? 'new_investigation' : activeSection;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden text-gray-200 bg-background">
@@ -310,6 +315,15 @@ function MainWorkspace() {
             {/* Content Area */}
             <main className="flex-grow overflow-y-auto p-6 relative">
               <div className="max-w-7xl mx-auto w-full pb-12">
+                {currentSection === 'case_management' && (
+                  <CaseManagement
+                    onSelectCase={(caseObj) => {
+                      if (caseObj.seed_address) {
+                        setActiveSection('new_investigation');
+                      }
+                    }}
+                  />
+                )}
                 {currentSection === 'new_investigation' && (
                   <NewInvestigation
                     onStartTrace={handleStartTrace}
@@ -352,14 +366,19 @@ function MainWorkspace() {
           </>
         )}
       </div>
+
+      {/* Global Auth & Persona Modal */}
+      {authModalOpen && <AuthModal />}
     </div>
   );
 }
 
 export default function App() {
   return (
-    <InvestigationProvider>
-      <MainWorkspace />
-    </InvestigationProvider>
+    <AuthProvider>
+      <InvestigationProvider>
+        <MainWorkspace />
+      </InvestigationProvider>
+    </AuthProvider>
   );
 }

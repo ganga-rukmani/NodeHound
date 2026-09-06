@@ -1,4 +1,4 @@
-﻿# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -22,3 +22,9 @@ yarn-error.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Local databases and caches
+*.db
+*.sqlite
+*.sqlite3
+.pytest_cache/
