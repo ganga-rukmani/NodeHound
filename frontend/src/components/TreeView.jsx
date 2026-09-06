@@ -1062,12 +1062,18 @@ export default function TreeView({
             )}
           >
             <Network className="w-3.5 h-3.5 text-cyan-400" />
-            Both Directions
+            Flow View: Incoming + Outgoing
           </button>
         </div>
 
-        {/* Center: Legend */}
+        {/* Center: Investigator Legend */}
         <div className="flex items-center gap-3 text-[11px] text-gray-400 flex-wrap">
+          <span className="flex items-center gap-1.5 text-emerald-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Incoming (Inflow)
+          </span>
+          <span className="flex items-center gap-1.5 text-amber-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Outgoing (Outflow)
+          </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm" /> Ethereum
           </span>
@@ -1079,6 +1085,9 @@ export default function TreeView({
           </span>
           <span className="flex items-center gap-1.5 text-gray-400">
             <span className="inline-block w-4 border-b border-dashed border-indigo-400" /> Bridge
+          </span>
+          <span className="text-[10px] text-gray-500 border-l border-panel-border pl-2">
+            Arrow (→) = Transfer Direction (FROM → TO)
           </span>
         </div>
 
@@ -1167,6 +1176,23 @@ export default function TreeView({
           </div>
         </div>
       </div>
+
+      {/* Direction Semantics Sub-Banner for Both Mode */}
+      {flowMode === 'both' && (
+        <div className="bg-panel/95 border-b border-panel-border/80 px-4 py-1.5 flex items-center justify-between text-xs text-gray-300 z-10 flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+              Showing: Both Incoming &amp; Outgoing Relationships
+            </span>
+            <span className="text-[11px] text-gray-400">
+              Left: Upstream Inflow Sources (Counterparties → Seed) &bull; Right: Downstream Outflow Destinations (Seed → Counterparties)
+            </span>
+          </div>
+          <div className="text-[10px] text-yellow-400/90 italic">
+            Notice: Separate blockchain transactions, NOT bidirectional single transfers.
+          </div>
+        </div>
+      )}
 
       {/* ── Interactive Tree SVG Canvas (Takes 100% Remaining Height) ─────── */}
       <div

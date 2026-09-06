@@ -55,8 +55,9 @@ from intelligence.typology_detector import detect_typologies
 from intelligence.vasp_identifier import nearest_vasp
 from reports.investigation_report import build_investigation_report
 from scoring.chain_model import load_chain_model, predict_risk
-from auth.database import init_database, record_audit_log
+from auth.database import init_database, record_audit_log, get_connection as get_auth_db_connection
 from auth.routes import auth_router, case_router
+from graph.neo4j_client import get_neo4j_client
 
 load_dotenv()  # reads .env at project root into os.environ, if present
 
@@ -211,6 +212,19 @@ def load_caches():
                 print(f"[api] {chain} model unavailable: {artifact['status']}")
         except Exception as e:
             print(f"[api] WARNING: {chain} model load failed: {e}")
+
+    # Neo4j Graph Database Connectivity & Schema Setup
+    print("[api] checking Neo4j graph database connectivity...")
+    try:
+        neo4j_client = get_neo4j_client()
+        neo4j_health = neo4j_client.check_health()
+        if neo4j_health.get("connected"):
+            print(f"[api] Neo4j connected successfully at {neo4j_client.uri} ({neo4j_health.get('version', 'unknown version')})")
+            neo4j_client.setup_schema()
+        else:
+            print(f"[api] Neo4j not reachable at {neo4j_client.uri} - running in graceful in-memory fallback mode ({neo4j_health.get('error')})")
+    except Exception as e:
+        print(f"[api] WARNING: Neo4j health check exception: {e}")
 
 
 SAMPLE_TRACE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "sample_trace.json"))
@@ -489,7 +503,51 @@ def _build_investigation(seed: str, req: TraceRequest, start: datetime, end: dat
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_loaded": _calibrated_model is not None}
+    """
+    Comprehensive system health endpoint.
+    Reports operational status of:
+    - FastAPI backend runtime
+    - Neo4j graph database connectivity
+    - SQLite authentication / case management database
+    - Scoring models availability
+    - Chain ingestion adapters availability
+    """
+    neo4j_info = get_neo4j_client().check_health()
+
+    auth_db_ok = False
+    try:
+        conn = get_auth_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM users")
+        cur.fetchone()
+        conn.close()
+        auth_db_ok = True
+    except Exception:
+        auth_db_ok = False
+
+    is_healthy = auth_db_ok
+
+    return {
+        "status": "healthy" if is_healthy else "degraded",
+        "model_loaded": _calibrated_model is not None,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "version": "2.0.0-forensic",
+        "neo4j": neo4j_info,
+        "auth_database": {
+            "status": "connected" if auth_db_ok else "error",
+            "type": "sqlite",
+        },
+        "scoring_models": {
+            "ethereum": _chain_models.get("ethereum", {}).get("model_available", False),
+            "tron": _chain_models.get("tron", {}).get("model_available", False),
+            "bitcoin": _chain_models.get("bitcoin", {}).get("model_available", False),
+        },
+        "ingestion_adapters": {
+            "ethereum": ETH_INGESTION_AVAILABLE,
+            "tron": TRON_INGESTION_AVAILABLE,
+            "bitcoin": BTC_INGESTION_AVAILABLE,
+        },
+    }
 
 
 @app.post("/trace")
@@ -634,3 +692,10 @@ def get_timeline(chain: str, address: str):
         edge for edge in _last_trace_edges
         if edge.from_address.lower() == address.lower() or edge.to_address.lower() == address.lower()
     ])}
+
+
+
+@app.get("/api/neo4j/health")
+def neo4j_health():
+    """Dedicated endpoint returning Neo4j graph database cluster diagnostics."""
+    return get_neo4j_client().check_health()
