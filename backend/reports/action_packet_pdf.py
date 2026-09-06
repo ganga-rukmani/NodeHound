@@ -285,3 +285,4 @@ def generate_action_packet_pdf(packet_data: Dict[str, Any]) -> bytes:
     if isinstance(out, str):
         return out.encode("latin-1")
     return bytes(out)
+
