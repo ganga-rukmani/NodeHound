@@ -9,8 +9,13 @@ import InvestigatorSidebar from './components/layout/InvestigatorSidebar';
 import TxDetailDrawer from './components/common/TxDetailDrawer';
 import AuthModal from './components/auth/AuthModal';
 
-// Case Governance & 18 Page Views + Graph
+// Case Governance & Prompts 3 to 7 Views
 import CaseManagement from './components/pages/CaseManagement';
+import CaseWorkspace from './components/pages/CaseWorkspace';
+import SupervisorConsole from './components/pages/SupervisorConsole';
+import SuspiciousWalletPrioritization from './components/pages/SuspiciousWalletPrioritization';
+import FundFlowDna from './components/pages/FundFlowDna';
+import InvestigationReplay from './components/pages/InvestigationReplay';
 import NewInvestigation from './components/pages/NewInvestigation';
 import InvestigationOverview from './components/pages/InvestigationOverview';
 import TransactionInvestigation from './components/pages/TransactionInvestigation';
@@ -249,14 +254,25 @@ function MainWorkspace() {
     setViewState('app');
   };
 
+  const [activeCaseObj, setActiveCaseObj] = useState(null);
+
   const handleCancelLoading = () => {
     if (abortController) abortController.abort();
     setAbortController(null);
     setViewState('app');
   };
 
-  // If no trace has been loaded yet, show the New Investigation form (or Case Management)
-  const currentSection = (!traceData && activeSection !== 'case_management') ? 'new_investigation' : activeSection;
+  const unrestrictedSections = new Set([
+    'case_management',
+    'case_workspace',
+    'supervisor_console',
+    'prioritization',
+    'fund_flow_dna',
+    'replay',
+  ]);
+
+  // If no trace has been loaded yet, show the New Investigation form (unless viewing unrestricted sections)
+  const currentSection = (!traceData && !unrestrictedSections.has(activeSection)) ? 'new_investigation' : activeSection;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden text-gray-200 bg-background">
@@ -318,12 +334,29 @@ function MainWorkspace() {
                 {currentSection === 'case_management' && (
                   <CaseManagement
                     onSelectCase={(caseObj) => {
+                      setActiveCaseObj(caseObj);
                       if (caseObj.seed_address) {
-                        setActiveSection('new_investigation');
+                        setActiveSection('case_workspace');
                       }
                     }}
                   />
                 )}
+                {currentSection === 'case_workspace' && (
+                  <CaseWorkspace
+                    caseObj={activeCaseObj}
+                    onBack={() => setActiveSection('case_management')}
+                  />
+                )}
+                {currentSection === 'supervisor_console' && (
+                  <SupervisorConsole
+                    onSelectCase={(caseObj) => {
+                      setActiveCaseObj(caseObj);
+                    }}
+                  />
+                )}
+                {currentSection === 'prioritization' && <SuspiciousWalletPrioritization />}
+                {currentSection === 'fund_flow_dna' && <FundFlowDna />}
+                {currentSection === 'replay' && <InvestigationReplay />}
                 {currentSection === 'new_investigation' && (
                   <NewInvestigation
                     onStartTrace={handleStartTrace}

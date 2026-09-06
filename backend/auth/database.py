@@ -125,6 +125,48 @@ def init_database():
     );
     """)
 
+    # 6. Case Candidate Status Table (Prompt 3: Watchlist, Priority, Reviewed)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS case_candidate_status (
+        id TEXT PRIMARY KEY,
+        case_id TEXT NOT NULL,
+        address TEXT NOT NULL,
+        status TEXT NOT NULL, -- WATCHLIST, INVESTIGATION_PRIORITY, REVIEWED
+        notes TEXT,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (case_id) REFERENCES cases(case_id),
+        FOREIGN KEY (updated_by) REFERENCES users(id),
+        UNIQUE(case_id, address)
+    );
+    """)
+
+    # 7. Case Notes Table (Prompt 6: Investigator Notes vs Blockchain Evidence)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS case_notes (
+        id TEXT PRIMARY KEY,
+        case_id TEXT NOT NULL,
+        author_id TEXT NOT NULL,
+        author_name TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (case_id) REFERENCES cases(case_id),
+        FOREIGN KEY (author_id) REFERENCES users(id)
+    );
+    """)
+
+    # Ensure schema migrations for cases table columns if missing
+    cursor.execute("PRAGMA table_info(cases);")
+    existing_cols = {row["name"] for row in cursor.fetchall()}
+    if "closed_by" not in existing_cols:
+        cursor.execute("ALTER TABLE cases ADD COLUMN closed_by TEXT;")
+    if "closed_at" not in existing_cols:
+        cursor.execute("ALTER TABLE cases ADD COLUMN closed_at TEXT;")
+    if "closure_reason" not in existing_cols:
+        cursor.execute("ALTER TABLE cases ADD COLUMN closure_reason TEXT;")
+    if "victim_wallet" not in existing_cols:
+        cursor.execute("ALTER TABLE cases ADD COLUMN victim_wallet TEXT;")
+
     conn.commit()
     conn.close()
     seed_initial_data()
@@ -330,3 +372,234 @@ def record_audit_log(
         conn.commit()
     finally:
         conn.close()
+
+
+def set_candidate_status(
+    case_id: str,
+    address: str,
+    status: str,
+    notes: Optional[str],
+    user_id: str
+) -> dict:
+    """Sets or updates the investigation prioritization status of a candidate wallet."""
+    conn = get_connection()
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        rec_id = f"cstat_{uuid.uuid4().hex[:12]}"
+        conn.execute("""
+        INSERT INTO case_candidate_status (id, case_id, address, status, notes, updated_by, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(case_id, address) DO UPDATE SET
+            status = excluded.status,
+            notes = COALESCE(excluded.notes, case_candidate_status.notes),
+            updated_by = excluded.updated_by,
+            updated_at = excluded.updated_at
+        """, (rec_id, case_id, address.lower(), status, notes, user_id, now_iso))
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT * FROM case_candidate_status WHERE case_id = ? AND address = ?",
+            (case_id, address.lower())
+        ).fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def get_candidate_statuses(case_id: str) -> dict[str, dict]:
+    """Retrieves all candidate status tags for a given case, keyed by lowercase address."""
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM case_candidate_status WHERE case_id = ?",
+            (case_id,)
+        )
+        return {row["address"].lower(): dict(row) for row in cursor.fetchall()}
+    finally:
+        conn.close()
+
+
+def add_case_note(
+    case_id: str,
+    author_id: str,
+    author_name: str,
+    content: str
+) -> dict:
+    """Appends an investigator note clearly distinguished from blockchain evidence."""
+    conn = get_connection()
+    try:
+        note_id = f"note_{uuid.uuid4().hex[:12]}"
+        now_iso = datetime.now(timezone.utc).isoformat()
+        conn.execute("""
+        INSERT INTO case_notes (id, case_id, author_id, author_name, content, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (note_id, case_id, author_id, author_name, content.strip(), now_iso))
+        conn.commit()
+
+        row = conn.execute("SELECT * FROM case_notes WHERE id = ?", (note_id,)).fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def get_case_notes(case_id: str) -> list[dict]:
+    """Returns chronological investigator notes for the case."""
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM case_notes WHERE case_id = ? ORDER BY created_at ASC",
+            (case_id,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def close_case(
+    case_id: str,
+    user_id: str,
+    closure_reason: str
+) -> dict:
+    """Closes an approved case, recording closed_by, closed_at, and closure_reason."""
+    conn = get_connection()
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        conn.execute("""
+        UPDATE cases
+        SET status = 'CLOSED',
+            closed_by = ?,
+            closed_at = ?,
+            closure_reason = ?,
+            updated_at = ?
+        WHERE case_id = ?
+        """, (user_id, now_iso, closure_reason, now_iso, case_id))
+        conn.commit()
+
+        row = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def get_supervisor_console_data(unit_id: str) -> dict:
+    """Aggregates unit-scoped queue for the supervisor console."""
+    conn = get_connection()
+    try:
+        cursor = conn.execute("""
+        SELECT c.*, u.full_name as creator_name, inv.full_name as assignee_name
+        FROM cases c
+        LEFT JOIN users u ON c.created_by = u.id
+        LEFT JOIN users inv ON c.assigned_investigator = inv.id
+        WHERE c.unit_id = ?
+        ORDER BY c.updated_at DESC
+        """, (unit_id,))
+        rows = [dict(row) for row in cursor.fetchall()]
+
+        active = [c for c in rows if c["status"] == "ACTIVE"]
+        under_review = [c for c in rows if c["status"] == "UNDER_REVIEW"]
+        high_priority = [c for c in rows if c["priority"] in ("HIGH", "CRITICAL") and c["status"] not in ("CLOSED", "ARCHIVED")]
+        unassigned = [c for c in rows if not c["assigned_investigator"] and c["status"] not in ("CLOSED", "ARCHIVED")]
+        awaiting_approval = [c for c in rows if c["status"] == "UNDER_REVIEW"]
+        closed = [c for c in rows if c["status"] == "CLOSED"]
+
+        # Unit investigators list for assignment modal
+        inv_cursor = conn.execute("""
+        SELECT id, email, full_name, investigator_id, role, status
+        FROM users
+        WHERE unit_id = ? AND role = 'INVESTIGATOR' AND status = 'ACTIVE'
+        ORDER BY full_name ASC
+        """, (unit_id,))
+        investigators = [dict(row) for row in inv_cursor.fetchall()]
+
+        return {
+            "unit_id": unit_id,
+            "metrics": {
+                "active_count": len(active),
+                "under_review_count": len(under_review),
+                "high_priority_count": len(high_priority),
+                "unassigned_count": len(unassigned),
+                "closed_count": len(closed),
+                "total_cases": len(rows),
+            },
+            "cases": rows,
+            "unit_investigators": investigators,
+        }
+    finally:
+        conn.close()
+
+
+def get_case_timeline_events(case_id: str) -> list[dict]:
+    """Compiles chronological timeline events from immutable audit logs, reviews, and notes."""
+    conn = get_connection()
+    try:
+        # 1. Audit logs
+        logs = conn.execute("""
+        SELECT a.id, a.timestamp, a.action, a.resource_type, a.resource_id, a.outcome, a.details,
+               u.full_name as actor_name, u.role as actor_role
+        FROM case_audit_logs a
+        LEFT JOIN users u ON a.user_id = u.id
+        WHERE a.resource_id = ? OR a.details LIKE ?
+        ORDER BY a.timestamp ASC
+        """, (case_id, f"%{case_id}%")).fetchall()
+
+        events = []
+        for row in logs:
+            events.append({
+                "event_id": row["id"],
+                "timestamp": row["timestamp"],
+                "action": row["action"],
+                "actor": row["actor_name"] or "System",
+                "role": row["actor_role"] or "SYSTEM",
+                "type": "AUDIT",
+                "outcome": row["outcome"],
+                "details": row["details"],
+            })
+
+        # 2. Case reviews
+        reviews = conn.execute("""
+        SELECT r.id, r.created_at as timestamp, r.decision, r.comments,
+               u.full_name as actor_name, u.role as actor_role
+        FROM case_reviews r
+        LEFT JOIN users u ON r.reviewer_id = u.id
+        WHERE r.case_id = ?
+        ORDER BY r.created_at ASC
+        """, (case_id,)).fetchall()
+
+        for row in reviews:
+            events.append({
+                "event_id": row["id"],
+                "timestamp": row["timestamp"],
+                "action": f"SUPERVISOR_REVIEW_{row['decision']}",
+                "actor": row["actor_name"] or "Supervisor",
+                "role": row["actor_role"] or "INVESTIGATION_SUPERVISOR",
+                "type": "REVIEW",
+                "outcome": row["decision"],
+                "details": row["comments"],
+            })
+
+        # 3. Notes
+        notes = conn.execute("""
+        SELECT id, created_at as timestamp, author_name as actor, content as details
+        FROM case_notes
+        WHERE case_id = ?
+        ORDER BY created_at ASC
+        """, (case_id,)).fetchall()
+
+        for row in notes:
+            events.append({
+                "event_id": row["id"],
+                "timestamp": row["timestamp"],
+                "action": "INVESTIGATOR_NOTE_ADDED",
+                "actor": row["actor"],
+                "role": "INVESTIGATOR",
+                "type": "NOTE",
+                "outcome": "RECORDED",
+                "details": row["details"],
+            })
+
+        # Sort all chronologically
+        events.sort(key=lambda e: e["timestamp"] or "")
+        return events
+    finally:
+        conn.close()
+

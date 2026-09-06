@@ -172,6 +172,8 @@ def evaluate_case_abac(user: Dict[str, Any], case: Dict[str, Any], action: str) 
             return False, "Only Investigation Supervisors manage case assignment or closure."
         if user_unit != case_unit:
             return False, "Supervisor cannot manage cases outside their unit."
+        if action == "case:close" and status_val not in ("APPROVED", "ACTIVE"):
+            return False, f"Case must be in 'APPROVED' or 'ACTIVE' status before closure (currently '{status_val}')."
         return True, "Authorized supervisory case management action."
 
     return False, "Denied by default fail-closed security policy."

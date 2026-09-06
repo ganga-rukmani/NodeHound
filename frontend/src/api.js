@@ -125,4 +125,35 @@ export const api = {
   getCaseAuditLogs: (caseId) => request(`/api/cases/${caseId}/audit-logs`),
 
   getDashboardMetrics: () => request('/api/cases/dashboard/metrics'),
+
+  // ── Prompts 3 to 7: Prioritization, DNA, Replay, Governance ────────────────
+  getCasePrioritization: (caseId) => request(`/api/cases/${caseId}/prioritization`),
+
+  updateCandidateStatus: (caseId, address, data) =>
+    request(`/api/cases/${caseId}/candidates/${address}/status`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getFundFlowDna: (caseId, address) => request(`/api/cases/${caseId}/dna/${address}`),
+
+  getInvestigationReplay: (caseId) => request(`/api/cases/${caseId}/replay`),
+
+  getCaseTimeline: (caseId) => request(`/api/cases/${caseId}/timeline`),
+
+  getCaseNotes: (caseId) => request(`/api/cases/${caseId}/notes`),
+
+  createCaseNote: (caseId, content) =>
+    request(`/api/cases/${caseId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+
+  closeCase: (caseId, reason) =>
+    request(`/api/cases/${caseId}/close`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  getSupervisorConsole: () => request('/api/cases/supervisor/console'),
 };
