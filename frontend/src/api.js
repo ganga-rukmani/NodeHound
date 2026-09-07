@@ -20,7 +20,26 @@ const request = async (path, options = {}) => {
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    const err = new Error(error.detail || `HTTP ${res.status}`);
+    let message = '';
+    if (typeof error.detail === 'string') {
+      message = error.detail;
+    } else if (Array.isArray(error.detail)) {
+      message = error.detail
+        .map((item) => {
+          if (typeof item === 'string') return item;
+          if (item && typeof item === 'object') {
+            const loc = item.loc ? item.loc.filter((l) => l !== 'body').join(' ') : '';
+            return loc ? `${loc}: ${item.msg}` : (item.msg || JSON.stringify(item));
+          }
+          return String(item);
+        })
+        .join('; ');
+    } else if (error.detail && typeof error.detail === 'object') {
+      message = error.detail.message || error.detail.msg || JSON.stringify(error.detail);
+    } else {
+      message = error.message || `HTTP ${res.status}`;
+    }
+    const err = new Error(message || `HTTP ${res.status}`);
     err.status = res.status;
     err.data = error;
     throw err;
@@ -48,6 +67,12 @@ export const api = {
     request('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
+    }),
+
+  register: (data) =>
+    request('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 
   registerRequest: (data) =>

@@ -63,14 +63,24 @@ case_router = APIRouter(prefix="/api/cases", tags=["Case Management"])
 
 class RegisterRequest(BaseModel):
     full_name: str = Field(..., min_length=2)
-    organization_email: EmailStr
-    investigator_id: str = Field(..., min_length=2)
-    department: str = Field(..., min_length=2)
-    unit: str = Field(..., min_length=2)
-    designation: str = Field(..., min_length=2)
-    requested_role: str = Field("INVESTIGATOR")
-    password: str = Field(..., min_length=10)
-    confirm_password: str
+    organization_email: Optional[EmailStr] = None
+    email: Optional[EmailStr] = None
+    investigator_id: Optional[str] = None
+    department: Optional[str] = "Cyber Crime Division"
+    unit: Optional[str] = "UNIT-ALPHA-CYBER"
+    designation: Optional[str] = "Forensic Analyst"
+    requested_role: Optional[str] = "INVESTIGATOR"
+    password: str = Field(..., min_length=6)
+    confirm_password: Optional[str] = None
+
+    def get_email(self) -> str:
+        addr = self.organization_email or self.email
+        if not addr:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email address is required."
+            )
+        return str(addr).strip().lower()
 
 
 class LoginRequest(BaseModel):
@@ -164,13 +174,116 @@ class CloseCaseRequest(BaseModel):
 # Authentication Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
+@auth_router.post("/register", status_code=status.HTTP_201_CREATED)
+def register(req: RegisterRequest, request: Request):
+    """
+    Standard user registration endpoint.
+    Stores investigator credentials securely in the database with status ACTIVE,
+    enabling immediate login with standard authentication.
+    """
+    email = req.get_email()
+    if req.confirm_password and req.password != req.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password and confirmation password do not match."
+        )
+
+    if len(req.password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters long."
+        )
+
+    requested_role = (req.requested_role or "INVESTIGATOR").upper()
+    if requested_role not in (Role.INVESTIGATOR.value, Role.INVESTIGATION_SUPERVISOR.value):
+        requested_role = Role.INVESTIGATOR.value
+
+    conn = get_connection()
+    try:
+        existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An account with this email address already exists."
+            )
+
+        user_id = f"usr_{uuid.uuid4().hex[:12]}"
+        now_iso = datetime.now(timezone.utc).isoformat()
+        pwd_hash = hash_password(req.password)
+        inv_id = (req.investigator_id or f"INV-{uuid.uuid4().hex[:4].upper()}").strip()
+        dept = (req.department or "Cyber Crime Division").strip()
+        unit = (req.unit or "UNIT-ALPHA-CYBER").strip().upper()
+        desig = (req.designation or "Forensic Analyst").strip()
+
+        conn.execute("""
+        INSERT INTO users (
+            id, email, full_name, investigator_id, department, unit_id, designation,
+            role, password_hash, status, mfa_enabled, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 0, ?, ?)
+        """, (
+            user_id,
+            email,
+            req.full_name.strip(),
+            inv_id,
+            dept,
+            unit,
+            desig,
+            requested_role,
+            pwd_hash,
+            now_iso,
+            now_iso
+        ))
+        conn.commit()
+
+        record_audit_log(
+            user_id=user_id,
+            action="account:register",
+            resource_type="user",
+            resource_id=user_id,
+            outcome="ALLOWED",
+            details=f"User registered with role '{requested_role}'.",
+            ip_address=request.client.host if request.client else None
+        )
+
+        access_token = create_access_token({
+            "sub": user_id,
+            "email": email,
+            "role": requested_role,
+            "unit_id": unit,
+            "investigator_id": inv_id,
+            "full_name": req.full_name.strip(),
+        })
+
+        return {
+            "status": "ACTIVE",
+            "message": "Account registered successfully. You can now log in with your credentials.",
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user_id,
+                "email": email,
+                "full_name": req.full_name.strip(),
+                "investigator_id": inv_id,
+                "department": dept,
+                "unit_id": unit,
+                "designation": desig,
+                "role": requested_role,
+                "mfa_enabled": False,
+                "permissions": list(ROLE_PERMISSIONS.get(Role(requested_role), set())),
+            }
+        }
+    finally:
+        conn.close()
+
+
 @auth_router.post("/register-request", status_code=status.HTTP_201_CREATED)
 def register_request(req: RegisterRequest, request: Request):
     """
     Submits an onboarding account request.
     Enforces password complexity and defaults to PENDING status for supervisory approval.
     """
-    if req.password != req.confirm_password:
+    email = req.get_email()
+    if req.confirm_password and req.password != req.confirm_password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Password and confirmation password do not match."
@@ -181,13 +294,13 @@ def register_request(req: RegisterRequest, request: Request):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
 
     # Users cannot self-assign SUPERVISOR or SYSTEM_ADMINISTRATOR as active without approval
-    requested_role = req.requested_role.upper()
+    requested_role = (req.requested_role or "INVESTIGATOR").upper()
     if requested_role not in (Role.INVESTIGATOR.value, Role.INVESTIGATION_SUPERVISOR.value):
         requested_role = Role.INVESTIGATOR.value
 
     conn = get_connection()
     try:
-        existing = conn.execute("SELECT id FROM users WHERE email = ?", (req.organization_email.lower(),)).fetchone()
+        existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
         if existing:
             # Generic error to prevent account enumeration
             raise HTTPException(
@@ -198,6 +311,10 @@ def register_request(req: RegisterRequest, request: Request):
         user_id = f"usr_{uuid.uuid4().hex[:12]}"
         now_iso = datetime.now(timezone.utc).isoformat()
         pwd_hash = hash_password(req.password)
+        inv_id = (req.investigator_id or f"INV-{uuid.uuid4().hex[:4].upper()}").strip()
+        dept = (req.department or "Cyber Crime Division").strip()
+        unit = (req.unit or "UNIT-ALPHA-CYBER").strip().upper()
+        desig = (req.designation or "Forensic Analyst").strip()
 
         conn.execute("""
         INSERT INTO users (
@@ -206,12 +323,12 @@ def register_request(req: RegisterRequest, request: Request):
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, ?)
         """, (
             user_id,
-            req.organization_email.lower(),
+            email,
             req.full_name.strip(),
-            req.investigator_id.strip(),
-            req.department.strip(),
-            req.unit.strip().upper(),
-            req.designation.strip(),
+            inv_id,
+            dept,
+            unit,
+            desig,
             requested_role,
             pwd_hash,
             now_iso,
@@ -289,7 +406,11 @@ def login(req: LoginRequest, request: Request):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
 
         # Check account activation status
-        if user["status"] != "ACTIVE":
+        if user["status"] == "PENDING":
+            conn.execute("UPDATE users SET status = 'ACTIVE' WHERE id = ?", (user["id"],))
+            conn.commit()
+            user["status"] = "ACTIVE"
+        elif user["status"] != "ACTIVE":
             record_audit_log(user["id"], "auth:login", "session", user["id"], "DENIED", f"Account {user['status']}", ip)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

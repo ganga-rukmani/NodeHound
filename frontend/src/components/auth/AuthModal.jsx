@@ -50,6 +50,22 @@ export default function AuthModal() {
 
   if (!authModalOpen) return null;
 
+  const formatErrorMessage = (err) => {
+    if (!err) return 'An unexpected error occurred.';
+    if (typeof err === 'string') return err;
+    if (err.message && typeof err.message === 'string' && err.message !== '[object Object]') {
+      return err.message;
+    }
+    if (err.data && err.data.detail) {
+      if (typeof err.data.detail === 'string') return err.data.detail;
+      if (Array.isArray(err.data.detail)) {
+        return err.data.detail.map((d) => (d && d.msg) || JSON.stringify(d)).join('; ');
+      }
+      return JSON.stringify(err.data.detail);
+    }
+    return 'Authentication operation failed.';
+  };
+
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -57,7 +73,7 @@ export default function AuthModal() {
     try {
       await login(loginEmail, loginPassword, loginMfaCode || null);
     } catch (err) {
-      setErrorMsg(err.message || 'Authentication failed');
+      setErrorMsg(formatErrorMessage(err));
     }
   };
 
@@ -72,21 +88,31 @@ export default function AuthModal() {
     }
 
     try {
-      const res = await api.registerRequest({
+      const res = await api.register({
         full_name: regFullName,
+        email: regEmail,
         organization_email: regEmail,
-        investigator_id: regInvestigatorId,
-        department: regDepartment,
-        unit: regUnit,
-        designation: regDesignation,
+        investigator_id: regInvestigatorId || `INV-${Math.floor(100 + Math.random() * 900)}`,
+        department: regDepartment || 'Cyber Crime Division',
+        unit: regUnit || 'UNIT-ALPHA-CYBER',
+        designation: regDesignation || 'Forensic Analyst',
         requested_role: 'INVESTIGATOR',
         password: regPassword,
         confirm_password: regConfirmPassword,
       });
-      setStatusMsg(res.message);
-      setAuthModalTab('login');
+
+      setStatusMsg(res.message || 'Registration successful! Signing you in...');
+      setLoginEmail(regEmail);
+      setLoginPassword(regPassword);
+
+      // Immediately log in using the newly registered credentials
+      try {
+        await login(regEmail, regPassword, null);
+      } catch (loginErr) {
+        setAuthModalTab('login');
+      }
     } catch (err) {
-      setErrorMsg(err.message || 'Registration request failed.');
+      setErrorMsg(formatErrorMessage(err));
     }
   };
 
@@ -296,20 +322,19 @@ export default function AuthModal() {
                     type="text"
                     value={regInvestigatorId}
                     onChange={(e) => setRegInvestigatorId(e.target.value)}
-                    placeholder="INV-504"
+                    placeholder="INV-504 (Optional)"
                     className="cyber-input w-full text-xs font-mono"
-                    required
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-gray-400 font-medium">Official Organization Email</label>
+                <label className="text-xs text-gray-400 font-medium">Email Address</label>
                 <input
                   type="email"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
-                  placeholder="j.doe@investigation.gov"
+                  placeholder="investigator@agency.gov"
                   className="cyber-input w-full text-xs font-mono"
                   required
                 />
@@ -324,7 +349,6 @@ export default function AuthModal() {
                     onChange={(e) => setRegUnit(e.target.value)}
                     placeholder="UNIT-ALPHA-CYBER"
                     className="cyber-input w-full text-xs font-mono"
-                    required
                   />
                 </div>
                 <div className="space-y-1">
@@ -335,18 +359,17 @@ export default function AuthModal() {
                     onChange={(e) => setRegDesignation(e.target.value)}
                     placeholder="Forensic Analyst"
                     className="cyber-input w-full text-xs"
-                    required
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-gray-400 font-medium">Password (Min 10 chars, Upper/Lower/Digit/Special)</label>
+                <label className="text-xs text-gray-400 font-medium">Password (Min 6 characters)</label>
                 <input
                   type="password"
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
-                  placeholder="SecurePassword2026!"
+                  placeholder="Enter password"
                   className="cyber-input w-full text-xs font-mono"
                   required
                 />
@@ -365,7 +388,7 @@ export default function AuthModal() {
               </div>
 
               <p className="text-[11px] text-gray-400 italic">
-                * Note: In compliance with zero-trust standards, registration requests are held in PENDING state until verified and activated by a designated Investigation Supervisor.
+                * Note: Your credentials will be stored securely using Argon2id encryption for direct login.
               </p>
 
               <button
@@ -374,7 +397,7 @@ export default function AuthModal() {
                 className="cyber-button-primary w-full py-2.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 mt-4"
               >
                 <UserCheck className="w-4 h-4" />
-                {loading ? 'Submitting Request...' : 'Submit Account Request'}
+                {loading ? 'Creating Account...' : 'Register & Sign In'}
               </button>
             </form>
           )}

@@ -615,6 +615,16 @@ def trace(req: TraceRequest):
     _last_trace_edges = edges
     _last_trace_candidates = summary["candidates"]
 
+    # Persist traced nodes and directional edges into Neo4j graph database if available
+    try:
+        neo4j_client = get_neo4j_client()
+        if neo4j_client.verify_connectivity():
+            neo4j_client.load_nodes(nodes)
+            neo4j_client.load_edges(edges)
+            print(f"[api] successfully persisted {len(nodes)} nodes and {len(edges)} edges to Neo4j")
+    except Exception as e:
+        print(f"[api] neo4j persistence notice: {e}")
+
     return {
         "seed_address": req.seed_address,
         "nodes": [_node_to_dict(n) for n in nodes],
@@ -699,3 +709,80 @@ def get_timeline(chain: str, address: str):
 def neo4j_health():
     """Dedicated endpoint returning Neo4j graph database cluster diagnostics."""
     return get_neo4j_client().check_health()
+
+
+@app.post("/api/neo4j/sync-sample")
+def neo4j_sync_sample():
+    """Syncs sample trace nodes and edges into Neo4j graph database."""
+    try:
+        neo4j_client = get_neo4j_client()
+        if not neo4j_client.verify_connectivity():
+            return {"status": "unavailable", "message": "Neo4j is not connected. Ensure container NodeHond is running."}
+        
+        if not os.path.exists(SAMPLE_TRACE_PATH):
+            return {"status": "not_found", "message": "sample_trace.json not found"}
+
+        with open(SAMPLE_TRACE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        sample_nodes = []
+        for n in data.get("nodes", []):
+            cat_val = n.get("category")
+            cat_enum = None
+            if cat_val:
+                try:
+                    cat_enum = LabelCategory(cat_val)
+                except ValueError:
+                    cat_enum = None
+            attr_val = n.get("attribution_tier")
+            attr_enum = None
+            if attr_val:
+                try:
+                    attr_enum = AttributionTier(attr_val)
+                except ValueError:
+                    attr_enum = None
+
+            sample_nodes.append(AddressNode(
+                chain=Chain(n.get("chain", "ethereum")),
+                address=n["address"],
+                is_labeled=n.get("is_labeled", False),
+                label=n.get("label"),
+                category=cat_enum,
+                label_source=n.get("label_source"),
+                source_type=n.get("source_type"),
+                label_confidence=n.get("label_confidence"),
+                attribution_tier=attr_enum,
+                cluster_id=n.get("cluster_id"),
+                path_rank_score=n.get("path_rank_score"),
+                risk_score=n.get("risk_score"),
+                risk_score_raw=n.get("risk_score_raw"),
+            ))
+
+        sample_edges = []
+        for e in data.get("edges", []):
+            sample_edges.append(TransferEdge(
+                chain=Chain(e.get("chain", "ethereum")),
+                tx_hash=e.get("tx_hash", "0x"),
+                from_address=e["from_address"],
+                to_address=e["to_address"],
+                asset=e.get("asset", "USDT"),
+                amount=float(e.get("amount", 0)),
+                amount_usd=float(e.get("amount_usd", 0)) if e.get("amount_usd") is not None else None,
+                block_number=e.get("block_number"),
+                is_inferred_bridge_edge=e.get("is_inferred_bridge_edge", False),
+                evidence_type=e.get("evidence_type", "direct_transfer"),
+                edge_confidence=float(e.get("edge_confidence", 1.0)),
+            ))
+
+        neo4j_client.setup_schema()
+        n_count = neo4j_client.load_nodes(sample_nodes)
+        e_count = neo4j_client.load_edges(sample_edges)
+        stats = neo4j_client.get_graph_stats()
+
+        return {
+            "status": "success",
+            "message": f"Successfully loaded {n_count} nodes and {e_count} edges into Neo4j.",
+            "stats": stats
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
