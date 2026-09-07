@@ -743,7 +743,7 @@ def neo4j_sync_sample():
                     attr_enum = None
 
             sample_nodes.append(AddressNode(
-                chain=Chain(n.get("chain", "ethereum")),
+                chain=Chain((n.get("chain") or "ethereum").lower()),
                 address=n["address"],
                 is_labeled=n.get("is_labeled", False),
                 label=n.get("label"),
@@ -761,7 +761,7 @@ def neo4j_sync_sample():
         sample_edges = []
         for e in data.get("edges", []):
             sample_edges.append(TransferEdge(
-                chain=Chain(e.get("chain", "ethereum")),
+                chain=Chain((e.get("chain") or "ethereum").lower()),
                 tx_hash=e.get("tx_hash", "0x"),
                 from_address=e["from_address"],
                 to_address=e["to_address"],
